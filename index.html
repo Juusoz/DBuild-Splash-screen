@@ -46,7 +46,8 @@
 const mode = "left"; 
 // "left", "right", "top", "bottom", "fade"
 
-const delay = 3000;
+const displayTime = 5000; // 5 seconds
+const transitionTime = 1000;
 
 /* ===========================
    LOAD IMAGES
@@ -60,7 +61,7 @@ async function loadImages() {
    UTILITIES
 =========================== */
 
-// Fisher-Yates shuffle (better random)
+// Shuffle
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -69,7 +70,7 @@ function shuffle(array) {
   return array;
 }
 
-// Preload image
+// Preload
 function preload(src) {
   return new Promise(resolve => {
     const img = new Image();
@@ -77,6 +78,11 @@ function preload(src) {
     img.onload = resolve;
     img.onerror = resolve;
   });
+}
+
+// Sleep helper
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /* ===========================
@@ -128,17 +134,17 @@ function animateOut(img) {
 }
 
 /* ===========================
-   GET NEXT IMAGE (LOOP SAFE)
+   QUEUE (LOOP SAFE)
 =========================== */
 function getNextImage() {
   if (queue.length === 0) {
-    queue = shuffle([...images]); // reshuffle when exhausted
+    queue = shuffle([...images]);
   }
   return queue.shift();
 }
 
 /* ===========================
-   START SLIDESHOW
+   MAIN LOOP (FIXED)
 =========================== */
 async function start() {
   images = await loadImages();
@@ -152,28 +158,31 @@ async function start() {
   let current = createImage(currentSrc);
   current.classList.add("active");
 
-  setInterval(async () => {
-    let nextSrc = getNextImage();
+  while (true) {
+    await sleep(displayTime);
 
-    // preload next image BEFORE showing
+    let nextSrc = getNextImage();
     await preload(nextSrc);
 
     let nextImg = createImage(nextSrc);
     setStartPosition(nextImg, mode);
 
     animateIn(nextImg, mode);
+
+    // Small delay ensures next image is visible BEFORE removing old
+    await sleep(50);
+
     animateOut(current);
 
-    // remove old image after animation
-    setTimeout(() => {
-      if (current.parentNode) {
-        container.removeChild(current);
-      }
-    }, 1000);
+    // Wait for transition to finish
+    await sleep(transitionTime);
+
+    if (current.parentNode) {
+      container.removeChild(current);
+    }
 
     current = nextImg;
-
-  }, delay);
+  }
 }
 
 start();
