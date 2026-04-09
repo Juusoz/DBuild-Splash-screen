@@ -21,7 +21,8 @@
     position: absolute;
     width: 100%;
     height: 100%;
-    object-fit: contain;
+    object-fit: cover; /* no stretching */
+    background: black;   /* fills empty space (letterbox) */
     opacity: 0;
   }
 
@@ -31,7 +32,7 @@
   }
 
   .transition {
-    transition: all 1s ease;
+    transition: transform 1s ease, opacity 1s ease;
   }
 </style>
 </head>
@@ -46,7 +47,7 @@
 const mode = "left"; 
 // "left", "right", "top", "bottom", "fade"
 
-const displayTime = 5000; // 5 seconds
+const displayTime = 5000;
 const transitionTime = 1000;
 
 /* ===========================
@@ -60,8 +61,6 @@ async function loadImages() {
 /* ===========================
    UTILITIES
 =========================== */
-
-// Shuffle
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -70,7 +69,6 @@ function shuffle(array) {
   return array;
 }
 
-// Preload
 function preload(src) {
   return new Promise(resolve => {
     const img = new Image();
@@ -80,7 +78,6 @@ function preload(src) {
   });
 }
 
-// Sleep helper
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -111,6 +108,9 @@ function setStartPosition(img, mode) {
 }
 
 function animateIn(img, mode) {
+  // FORCE browser to apply initial position first
+  img.getBoundingClientRect();
+
   requestAnimationFrame(() => {
     img.classList.add("active");
 
@@ -134,7 +134,7 @@ function animateOut(img) {
 }
 
 /* ===========================
-   QUEUE (LOOP SAFE)
+   QUEUE
 =========================== */
 function getNextImage() {
   if (queue.length === 0) {
@@ -144,7 +144,7 @@ function getNextImage() {
 }
 
 /* ===========================
-   MAIN LOOP (FIXED)
+   MAIN LOOP
 =========================== */
 async function start() {
   images = await loadImages();
@@ -165,16 +165,14 @@ async function start() {
     await preload(nextSrc);
 
     let nextImg = createImage(nextSrc);
+
     setStartPosition(nextImg, mode);
 
     animateIn(nextImg, mode);
 
-    // Small delay ensures next image is visible BEFORE removing old
-    await sleep(50);
-
+    await sleep(50); // ensure visibility before removing old
     animateOut(current);
 
-    // Wait for transition to finish
     await sleep(transitionTime);
 
     if (current.parentNode) {
