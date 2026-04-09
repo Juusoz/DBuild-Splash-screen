@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Advanced Slideshow</title>
+<title>Slideshow</title>
 <style>
   html, body {
     margin: 0;
@@ -25,10 +25,6 @@
     opacity: 0;
   }
 
-  .active {
-    opacity: 1;
-  }
-
   .transition {
     transition-property: transform, opacity;
     transition-timing-function: ease;
@@ -44,13 +40,11 @@
    USER CONFIG
 =========================== */
 const config = {
-  mode: "fade",              // left, right, top, bottom, fade
-  slideStyle: "overlay",     // overlay, push
+  mode: "fade",          // left, right, top, bottom, fade
+  slideStyle: "overlay", // overlay, push
   displayTime: 5000,
   transitionTime: 1000,
   fadeDuration: 5000,
-  randomizeEveryCycle: true,
-  preventImmediateRepeat: true,
   startRandom: true
 };
 
@@ -94,34 +88,32 @@ function forceReflow(el) {
    STATE
 =========================== */
 let images = [];
-let queue = [];
+let sequence = [];
+let index = 0;
 let lastImage = null;
 let container = document.getElementById("slideshow");
 
 /* ===========================
    HELPERS
 =========================== */
-function getTransforms(mode) {
-  switch(mode) {
-    case "left": return ["translateX(-100%)", "translateX(100%)"];
-    case "right": return ["translateX(100%)", "translateX(-100%)"];
-    case "top": return ["translateY(-100%)", "translateY(100%)"];
-    case "bottom": return ["translateY(100%)", "translateY(-100%)"];
-    default: return ["", ""];
+function buildSequence() {
+  sequence = shuffle([...images]);
+
+  // prevent repeat across loops
+  if (sequence.length > 1 && sequence[0] === lastImage) {
+    const swapIndex = Math.floor(Math.random() * (sequence.length - 1)) + 1;
+    [sequence[0], sequence[swapIndex]] = [sequence[swapIndex], sequence[0]];
   }
+
+  index = 0;
 }
 
 function getNextImage() {
-  if (queue.length === 0) {
-    queue = config.randomizeEveryCycle ? shuffle([...images]) : [...images];
-
-    if (config.preventImmediateRepeat && queue.length > 1 && queue[0] === lastImage) {
-      const swapIndex = Math.floor(Math.random() * (queue.length - 1)) + 1;
-      [queue[0], queue[swapIndex]] = [queue[swapIndex], queue[0]];
-    }
+  if (index >= sequence.length) {
+    buildSequence();
   }
 
-  const next = queue.shift();
+  const next = sequence[index++];
   lastImage = next;
   return next;
 }
@@ -135,6 +127,16 @@ function createImage(src, z = 1) {
   return img;
 }
 
+function getTransforms(mode) {
+  switch(mode) {
+    case "left": return ["translateX(-100%)", "translateX(100%)"];
+    case "right": return ["translateX(100%)", "translateX(-100%)"];
+    case "top": return ["translateY(-100%)", "translateY(100%)"];
+    case "bottom": return ["translateY(100%)", "translateY(-100%)"];
+    default: return ["", ""];
+  }
+}
+
 /* ===========================
    MAIN LOOP
 =========================== */
@@ -142,7 +144,7 @@ async function start() {
   images = await loadImages();
   if (!images.length) return;
 
-  queue = shuffle([...images]);
+  buildSequence();
 
   let currentSrc = config.startRandom ? getNextImage() : images[0];
   await preload(currentSrc);
@@ -160,7 +162,6 @@ async function start() {
 
     const [startPos, exitPos] = getTransforms(config.mode);
 
-    // Apply transition durations
     next.style.transitionDuration = config.transitionTime + "ms";
     current.style.transitionDuration = config.transitionTime + "ms";
 
@@ -177,7 +178,6 @@ async function start() {
       await sleep(config.fadeDuration);
 
     } else if (config.slideStyle === "overlay") {
-      // NEW covers OLD completely → no fade needed
       next.style.transform = startPos;
       next.style.opacity = "1";
 
@@ -185,12 +185,10 @@ async function start() {
 
       next.style.transform = "translate(0,0)";
 
-      // Wait until new image fully covers old
+      // wait until fully covered
       await sleep(config.transitionTime);
 
-      // Remove old instantly (no fade)
     } else if (config.slideStyle === "push") {
-      // Both move together
       next.style.transform = startPos;
       next.style.opacity = "1";
 
@@ -202,7 +200,7 @@ async function start() {
       await sleep(config.transitionTime);
     }
 
-    // Cleanup
+    // cleanup AFTER fully hidden
     if (current.parentNode) {
       container.removeChild(current);
     }
