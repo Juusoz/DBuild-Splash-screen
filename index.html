@@ -116,11 +116,23 @@ function forceReflow(el) {
 /* ===========================
    QUEUE
 =========================== */
+let lastImage = null;
+
 function getNextImage() {
   if (queue.length === 0) {
     queue = shuffle([...images]);
+
+    // Prevent same image repeating across reshuffle
+    if (queue.length > 1 && queue[0] === lastImage) {
+      // swap first with another random item
+      const swapIndex = Math.floor(Math.random() * (queue.length - 1)) + 1;
+      [queue[0], queue[swapIndex]] = [queue[swapIndex], queue[0]];
+    }
   }
-  return queue.shift();
+
+  const next = queue.shift();
+  lastImage = next;
+  return next;
 }
 
 /* ===========================
