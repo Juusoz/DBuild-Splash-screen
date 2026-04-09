@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Slideshow</title>
+<title>Advanced Slideshow</title>
 <style>
   html, body {
     margin: 0;
@@ -21,17 +21,17 @@
     position: absolute;
     width: 100%;
     height: 100%;
-    object-fit: cover; /* your change */
+    object-fit: cover;
     opacity: 0;
   }
 
   .active {
     opacity: 1;
-    z-index: 2;
   }
 
   .transition {
-    transition: transform 1s ease, opacity 1s ease;
+    transition-property: transform, opacity;
+    transition-timing-function: ease;
   }
 </style>
 </head>
@@ -41,12 +41,18 @@
 
 <script>
 /* ===========================
-   USER SETTINGS
+   USER CONFIG
 =========================== */
-const mode = "right"; // "left", "right", "top", "bottom", "fade"
-const slideStyle = "overlay"; // "overlay" or "push"
-const displayTime = 5000;
-const transitionTime = 1000;
+const config = {
+  mode: "left",              // left, right, top, bottom, fade
+  slideStyle: "overlay",     // overlay, push
+  displayTime: 5000,
+  transitionTime: 1000,
+  fadeDuration: 800,
+  randomizeEveryCycle: true,
+  preventImmediateRepeat: true,
+  startRandom: true
+};
 
 /* ===========================
    LOAD IMAGES
@@ -80,21 +86,21 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+function forceReflow(el) {
+  el.getBoundingClientRect();
+}
+
 /* ===========================
-   SLIDESHOW LOGIC
+   STATE
 =========================== */
 let images = [];
 let queue = [];
+let lastImage = null;
 let container = document.getElementById("slideshow");
 
-function createImage(src) {
-  const img = document.createElement("img");
-  img.src = src;
-  img.classList.add("transition");
-  container.appendChild(img);
-  return img;
-}
-
+/* ===========================
+   HELPERS
+=========================== */
 function getTransforms(mode) {
   switch(mode) {
     case "left": return ["translateX(-100%)", "translateX(100%)"];
@@ -105,22 +111,11 @@ function getTransforms(mode) {
   }
 }
 
-function forceReflow(el) {
-  el.getBoundingClientRect();
-}
-
-/* ===========================
-   QUEUE
-=========================== */
-let lastImage = null;
-
 function getNextImage() {
   if (queue.length === 0) {
-    queue = shuffle([...images]);
+    queue = config.randomizeEveryCycle ? shuffle([...images]) : [...images];
 
-    // Prevent same image repeating across reshuffle
-    if (queue.length > 1 && queue[0] === lastImage) {
-      // swap first with another random item
+    if (config.preventImmediateRepeat && queue.length > 1 && queue[0] === lastImage) {
       const swapIndex = Math.floor(Math.random() * (queue.length - 1)) + 1;
       [queue[0], queue[swapIndex]] = [queue[swapIndex], queue[0]];
     }
@@ -131,78 +126,88 @@ function getNextImage() {
   return next;
 }
 
+function createImage(src, z = 1) {
+  const img = document.createElement("img");
+  img.src = src;
+  img.style.zIndex = z;
+  img.classList.add("transition");
+  container.appendChild(img);
+  return img;
+}
+
 /* ===========================
    MAIN LOOP
 =========================== */
 async function start() {
   images = await loadImages();
-  if (images.length === 0) return;
+  if (!images.length) return;
 
   queue = shuffle([...images]);
 
-  let currentSrc = getNextImage();
+  let currentSrc = config.startRandom ? getNextImage() : images[0];
   await preload(currentSrc);
 
-  let current = createImage(currentSrc);
-  current.classList.add("active");
+  let current = createImage(currentSrc, 1);
+  current.style.opacity = "1";
 
   while (true) {
-    await sleep(displayTime);
+    await sleep(config.displayTime);
 
     let nextSrc = getNextImage();
     await preload(nextSrc);
 
-    let nextImg = createImage(nextSrc);
+    let next = createImage(nextSrc, 2);
 
-    const [startPos, exitPos] = getTransforms(mode);
+    const [startPos, exitPos] = getTransforms(config.mode);
 
-    if (mode === "fade") {
-      // Simple fade mode
-      nextImg.style.opacity = "0";
-      forceReflow(nextImg);
+    // Apply transition durations
+    next.style.transitionDuration = config.transitionTime + "ms";
+    current.style.transitionDuration = config.transitionTime + "ms";
 
-      nextImg.classList.add("active");
-      nextImg.style.opacity = "1";
+    if (config.mode === "fade") {
+      next.style.opacity = "0";
+      next.style.transitionDuration = config.fadeDuration + "ms";
+      current.style.transitionDuration = config.fadeDuration + "ms";
 
-      await sleep(50);
+      forceReflow(next);
+
+      next.style.opacity = "1";
       current.style.opacity = "0";
 
-    } else if (slideStyle === "overlay") {
-      // NEW slides over OLD
-      nextImg.style.transform = startPos;
-      nextImg.style.opacity = "1";
+      await sleep(config.fadeDuration);
 
-      forceReflow(nextImg);
+    } else if (config.slideStyle === "overlay") {
+      // NEW covers OLD completely → no fade needed
+      next.style.transform = startPos;
+      next.style.opacity = "1";
 
-      nextImg.classList.add("active");
-      nextImg.style.transform = "translate(0,0)";
+      forceReflow(next);
 
-      // fade old AFTER slide starts
-      await sleep(200);
-      current.style.opacity = "0";
+      next.style.transform = "translate(0,0)";
 
-    } else if (slideStyle === "push") {
-      // BOTH slide together
-      nextImg.style.transform = startPos;
-      nextImg.style.opacity = "1";
+      // Wait until new image fully covers old
+      await sleep(config.transitionTime);
 
-      forceReflow(nextImg);
+      // Remove old instantly (no fade)
+    } else if (config.slideStyle === "push") {
+      // Both move together
+      next.style.transform = startPos;
+      next.style.opacity = "1";
 
-      nextImg.classList.add("active");
+      forceReflow(next);
 
-      // move both at same time
-      nextImg.style.transform = "translate(0,0)";
+      next.style.transform = "translate(0,0)";
       current.style.transform = exitPos;
 
+      await sleep(config.transitionTime);
     }
 
-    await sleep(transitionTime);
-
+    // Cleanup
     if (current.parentNode) {
       container.removeChild(current);
     }
 
-    current = nextImg;
+    current = next;
   }
 }
 
