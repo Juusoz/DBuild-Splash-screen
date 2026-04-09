@@ -21,8 +21,7 @@
     position: absolute;
     width: 100%;
     height: 100%;
-    object-fit: cover; /* no stretching */
-    background: black;   /* fills empty space (letterbox) */
+    object-fit: cover; /* your change */
     opacity: 0;
   }
 
@@ -44,8 +43,11 @@
 /* ===========================
    USER SETTINGS
 =========================== */
-const mode = "right"; 
+const mode = "left"; 
 // "left", "right", "top", "bottom", "fade"
+
+const slideStyle = "overlay"; 
+// "overlay" or "push"
 
 const displayTime = 5000;
 const transitionTime = 1000;
@@ -97,40 +99,18 @@ function createImage(src) {
   return img;
 }
 
-function setStartPosition(img, mode) {
+function getTransforms(mode) {
   switch(mode) {
-    case "left": img.style.transform = "translateX(-100%)"; break;
-    case "right": img.style.transform = "translateX(100%)"; break;
-    case "top": img.style.transform = "translateY(-100%)"; break;
-    case "bottom": img.style.transform = "translateY(100%)"; break;
-    case "fade": img.style.opacity = "0"; break;
+    case "left": return ["translateX(-100%)", "translateX(100%)"];
+    case "right": return ["translateX(100%)", "translateX(-100%)"];
+    case "top": return ["translateY(-100%)", "translateY(100%)"];
+    case "bottom": return ["translateY(100%)", "translateY(-100%)"];
+    default: return ["", ""];
   }
 }
 
-function animateIn(img, mode) {
-  // FORCE browser to apply initial position first
-  img.getBoundingClientRect();
-
-  requestAnimationFrame(() => {
-    img.classList.add("active");
-
-    switch(mode) {
-      case "left":
-      case "right":
-      case "top":
-      case "bottom":
-        img.style.transform = "translate(0,0)";
-        break;
-      case "fade":
-        img.style.opacity = "1";
-        break;
-    }
-  });
-}
-
-function animateOut(img) {
-  img.classList.remove("active");
-  img.style.opacity = "0";
+function forceReflow(el) {
+  el.getBoundingClientRect();
 }
 
 /* ===========================
@@ -166,12 +146,47 @@ async function start() {
 
     let nextImg = createImage(nextSrc);
 
-    setStartPosition(nextImg, mode);
+    const [startPos, exitPos] = getTransforms(mode);
 
-    animateIn(nextImg, mode);
+    if (mode === "fade") {
+      // Simple fade mode
+      nextImg.style.opacity = "0";
+      forceReflow(nextImg);
 
-    await sleep(50); // ensure visibility before removing old
-    animateOut(current);
+      nextImg.classList.add("active");
+      nextImg.style.opacity = "1";
+
+      await sleep(50);
+      current.style.opacity = "0";
+
+    } else if (slideStyle === "overlay") {
+      // NEW slides over OLD
+      nextImg.style.transform = startPos;
+      nextImg.style.opacity = "1";
+
+      forceReflow(nextImg);
+
+      nextImg.classList.add("active");
+      nextImg.style.transform = "translate(0,0)";
+
+      // fade old AFTER slide starts
+      await sleep(200);
+      current.style.opacity = "0";
+
+    } else if (slideStyle === "push") {
+      // BOTH slide together
+      nextImg.style.transform = startPos;
+      nextImg.style.opacity = "1";
+
+      forceReflow(nextImg);
+
+      nextImg.classList.add("active");
+
+      // move both at same time
+      nextImg.style.transform = "translate(0,0)";
+      current.style.transform = exitPos;
+
+    }
 
     await sleep(transitionTime);
 
