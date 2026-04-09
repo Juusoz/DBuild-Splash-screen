@@ -44,9 +44,9 @@
    USER SETTINGS
 =========================== */
 const mode = "left"; 
-// Options: "left", "right", "top", "bottom", "fade"
+// "left", "right", "top", "bottom", "fade"
 
-const delay = 3000; // time between slides
+const delay = 3000;
 
 /* ===========================
    LOAD IMAGES
@@ -57,10 +57,33 @@ async function loadImages() {
 }
 
 /* ===========================
+   UTILITIES
+=========================== */
+
+// Fisher-Yates shuffle (better random)
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+  return array;
+}
+
+// Preload image
+function preload(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.src = src;
+    img.onload = resolve;
+    img.onerror = resolve;
+  });
+}
+
+/* ===========================
    SLIDESHOW LOGIC
 =========================== */
 let images = [];
-let index = 0;
+let queue = [];
 let container = document.getElementById("slideshow");
 
 function createImage(src) {
@@ -105,32 +128,50 @@ function animateOut(img) {
 }
 
 /* ===========================
+   GET NEXT IMAGE (LOOP SAFE)
+=========================== */
+function getNextImage() {
+  if (queue.length === 0) {
+    queue = shuffle([...images]); // reshuffle when exhausted
+  }
+  return queue.shift();
+}
+
+/* ===========================
    START SLIDESHOW
 =========================== */
 async function start() {
   images = await loadImages();
-
   if (images.length === 0) return;
 
-  let current = createImage(images[0]);
+  queue = shuffle([...images]);
+
+  let currentSrc = getNextImage();
+  await preload(currentSrc);
+
+  let current = createImage(currentSrc);
   current.classList.add("active");
 
-  setInterval(() => {
-    let nextIndex = (index + 1) % images.length;
-    let nextImg = createImage(images[nextIndex]);
+  setInterval(async () => {
+    let nextSrc = getNextImage();
 
+    // preload next image BEFORE showing
+    await preload(nextSrc);
+
+    let nextImg = createImage(nextSrc);
     setStartPosition(nextImg, mode);
 
     animateIn(nextImg, mode);
     animateOut(current);
 
-    // Cleanup old image after transition
+    // remove old image after animation
     setTimeout(() => {
-      container.removeChild(current);
+      if (current.parentNode) {
+        container.removeChild(current);
+      }
     }, 1000);
 
     current = nextImg;
-    index = nextIndex;
 
   }, delay);
 }
