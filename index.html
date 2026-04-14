@@ -111,31 +111,38 @@ function createSlide(src) {
 function applyKenBurns(img, duration) {
     if (!CONFIG.enableMotion) return;
 
-    // Determine direction: 1 is clockwise, -1 is counter-clockwise
-    const direction = Math.random() < 0.5 ? 1 : -1;
-    const endDirection = Math.random() < 0.5 ? 1 : -1;
+    let rot = 0;
+    let endRot = 0;
 
-    // Use the maxRotation as a fixed value, but randomize the direction
-    const rot = CONFIG.enableRotate ? (CONFIG.maxRotation * direction) : 0;
-    const endRot = CONFIG.enableRotate ? (CONFIG.maxRotation * endDirection) : 0;
+    if (CONFIG.enableRotate) {
+        rot = rand(-CONFIG.maxRotation, CONFIG.maxRotation);
+        
+        // Ensure the end rotation is at least CONFIG.minRotation away from start
+        let attempt = 0;
+        do {
+            endRot = rand(-CONFIG.maxRotation, CONFIG.maxRotation);
+            attempt++;
+        } while (Math.abs(endRot - rot) < (CONFIG.minRotation || 1) && attempt < 10);
+    }
     
-    // Calculate safe scale based on rotation
     const startScale = getRequiredScale(rot);
-    const endScale = startScale * rand(1.05, 1.15); // Slight zoom growth
+    const endScale = startScale * rand(1.05, 1.15); 
 
-    // Max pan distance based on scale
     const panRange = (startScale - 1) * 20; 
     const moveX = CONFIG.enablePan ? rand(-panRange, panRange) : 0;
     const moveY = CONFIG.enablePan ? rand(-panRange, panRange) : 0;
 
-    // Set Initial State
+    // 1. Set Initial State immediately
     img.style.transition = 'none';
     img.style.transform = `scale(${startScale}) rotate(${rot}deg) translate(0, 0)`;
 
-    // Trigger Animation
+    // 2. Use a double requestAnimationFrame to ensure the "none" transition 
+    // is rendered before the actual animation starts.
     requestAnimationFrame(() => {
-        img.style.transition = `transform ${duration}ms linear`;
-        img.style.transform = `scale(${endScale}) rotate(${endRot}deg) translate(${moveX}px, ${moveY}px)`;
+        requestAnimationFrame(() => {
+            img.style.transition = `transform ${duration}ms linear`;
+            img.style.transform = `scale(${endScale}) rotate(${endRot}deg) translate(${moveX}px, ${moveY}px)`;
+        });
     });
 }
 

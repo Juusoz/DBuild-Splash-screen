@@ -10,8 +10,8 @@ const CONFIG = {
     // MOTION SETTINGS
     enableMotion: true,
     maxZoom: 1.4,
-    maxRotation: 5, // Degrees
-    
+    maxRotation: 5, 
+    minRotation: 2, // New: ensures at least 2 degrees of movement
     enablePan: true,
     enableZoom: true,
     enableRotate: true
