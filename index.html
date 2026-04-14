@@ -24,6 +24,7 @@
     height: 100%;
     object-fit: cover;
     opacity: 0;
+    transform: scale(1);
   }
 
   .transition {
@@ -36,7 +37,6 @@
 
 <div id="slideshow"></div>
 
-<!-- LOAD CONFIG FIRST -->
 <script src="config.js"></script>
 
 <script>
@@ -76,6 +76,10 @@ function forceReflow(el) {
   el.getBoundingClientRect();
 }
 
+function rand(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
 /* ===========================
    STATE
 =========================== */
@@ -100,10 +104,7 @@ function buildSequence() {
 }
 
 function getNextImage() {
-  if (index >= sequence.length) {
-    buildSequence();
-  }
-
+  if (index >= sequence.length) buildSequence();
   const next = sequence[index++];
   lastImage = next;
   return next;
@@ -129,10 +130,32 @@ function getTransforms(mode) {
 }
 
 /* ===========================
-   MAIN
+   MOTION EFFECT
+=========================== */
+function applyMotion(img) {
+  if (!CONFIG.motion || !CONFIG.motion.enabled) return;
+
+  const zoomStart = rand(CONFIG.motion.zoomMin, CONFIG.motion.zoomMax);
+  const zoomEnd   = rand(CONFIG.motion.zoomMin, CONFIG.motion.zoomMax);
+
+  const panX = rand(-CONFIG.motion.panMax, CONFIG.motion.panMax);
+  const panY = rand(-CONFIG.motion.panMax, CONFIG.motion.panMax);
+
+  // Initial state
+  img.style.transform = `scale(${zoomStart}) translate(0%, 0%)`;
+
+  // Force apply
+  forceReflow(img);
+
+  // Animate slowly
+  img.style.transitionDuration = CONFIG.motion.duration + "ms";
+  img.style.transform = `scale(${zoomEnd}) translate(${panX}%, ${panY}%)`;
+}
+
+/* ===========================
+   MAIN LOOP
 =========================== */
 async function start() {
-  // Apply title from config
   document.title = CONFIG.title || "Slideshow";
 
   images = await loadImages();
@@ -145,6 +168,8 @@ async function start() {
 
   let current = createImage(currentSrc, 1);
   current.style.opacity = "1";
+
+  applyMotion(current);
 
   while (true) {
     await sleep(CONFIG.displayTime);
@@ -161,13 +186,13 @@ async function start() {
 
     if (CONFIG.mode === "fade") {
       next.style.opacity = "0";
-      next.style.transitionDuration = CONFIG.fadeDuration + "ms";
-      current.style.transitionDuration = CONFIG.fadeDuration + "ms";
 
       forceReflow(next);
 
       next.style.opacity = "1";
       current.style.opacity = "0";
+
+      applyMotion(next);
 
       await sleep(CONFIG.fadeDuration);
 
@@ -178,6 +203,8 @@ async function start() {
       forceReflow(next);
 
       next.style.transform = "translate(0,0)";
+
+      applyMotion(next);
 
       await sleep(CONFIG.transitionTime);
 
@@ -190,13 +217,12 @@ async function start() {
       next.style.transform = "translate(0,0)";
       current.style.transform = exitPos;
 
+      applyMotion(next);
+
       await sleep(CONFIG.transitionTime);
     }
 
-    if (current.parentNode) {
-      container.removeChild(current);
-    }
-
+    if (current.parentNode) container.removeChild(current);
     current = next;
   }
 }
