@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Slideshow</title>
+<title>Loading...</title>
 <style>
   html, body {
     margin: 0;
@@ -37,22 +37,10 @@
 
 <script>
 /* ===========================
-   USER CONFIG
+   LOAD FILES
 =========================== */
-const config = {
-  mode: "fade",          // left, right, top, bottom, fade
-  slideStyle: "overlay", // overlay, push
-  displayTime: 5000,
-  transitionTime: 1000,
-  fadeDuration: 5000,
-  startRandom: true
-};
-
-/* ===========================
-   LOAD IMAGES
-=========================== */
-async function loadImages() {
-  const res = await fetch("images.json");
+async function loadJSON(path) {
+  const res = await fetch(path);
   return await res.json();
 }
 
@@ -87,6 +75,7 @@ function forceReflow(el) {
 /* ===========================
    STATE
 =========================== */
+let config = {};
 let images = [];
 let sequence = [];
 let index = 0;
@@ -99,7 +88,6 @@ let container = document.getElementById("slideshow");
 function buildSequence() {
   sequence = shuffle([...images]);
 
-  // prevent repeat across loops
   if (sequence.length > 1 && sequence[0] === lastImage) {
     const swapIndex = Math.floor(Math.random() * (sequence.length - 1)) + 1;
     [sequence[0], sequence[swapIndex]] = [sequence[swapIndex], sequence[0]];
@@ -138,11 +126,19 @@ function getTransforms(mode) {
 }
 
 /* ===========================
-   MAIN LOOP
+   MAIN
 =========================== */
 async function start() {
-  images = await loadImages();
+  // Load config + images
+  config = await loadJSON("config.json");
+  images = await loadJSON("images.json");
+
   if (!images.length) return;
+
+  // Set page title
+  if (config.title) {
+    document.title = config.title;
+  }
 
   buildSequence();
 
@@ -185,7 +181,6 @@ async function start() {
 
       next.style.transform = "translate(0,0)";
 
-      // wait until fully covered
       await sleep(config.transitionTime);
 
     } else if (config.slideStyle === "push") {
@@ -200,7 +195,6 @@ async function start() {
       await sleep(config.transitionTime);
     }
 
-    // cleanup AFTER fully hidden
     if (current.parentNode) {
       container.removeChild(current);
     }
