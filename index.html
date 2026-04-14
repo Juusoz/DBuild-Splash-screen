@@ -111,8 +111,13 @@ function createSlide(src) {
 function applyKenBurns(img, duration) {
     if (!CONFIG.enableMotion) return;
 
-    const rot = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
-    const endRot = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
+    // Determine direction: 1 is clockwise, -1 is counter-clockwise
+    const direction = Math.random() < 0.5 ? 1 : -1;
+    const endDirection = Math.random() < 0.5 ? 1 : -1;
+
+    // Use the maxRotation as a fixed value, but randomize the direction
+    const rot = CONFIG.enableRotate ? (CONFIG.maxRotation * direction) : 0;
+    const endRot = CONFIG.enableRotate ? (CONFIG.maxRotation * endDirection) : 0;
     
     // Calculate safe scale based on rotation
     const startScale = getRequiredScale(rot);
