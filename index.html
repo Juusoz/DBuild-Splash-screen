@@ -18,19 +18,11 @@
     height: 100vh;
   }
 
-  .slide {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    overflow: hidden; /* important */
-  }
-
   img {
     position: absolute;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    will-change: transform, opacity;
     opacity: 0;
   }
 
@@ -70,16 +62,13 @@ function preload(src) {
 }
 
 function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(r => setTimeout(r, ms));
 }
 
 function forceReflow(el) {
   el.getBoundingClientRect();
 }
 
-/* ===========================
-   SEQUENCE SYSTEM
-=========================== */
 let images = [];
 let sequence = [];
 let index = 0;
@@ -104,56 +93,66 @@ function getNextImage() {
   return next;
 }
 
-/* ===========================
-   MOTION GENERATOR
-=========================== */
-function getRandomMotion() {
-  if (!CONFIG.enableMotion) return { start: "", end: "" };
-
-  let scaleStart = CONFIG.zoom ? (1 + Math.random() * (CONFIG.maxZoom - 1)) : 1;
-  let scaleEnd = CONFIG.zoom ? (1 + Math.random() * (CONFIG.maxZoom - 1)) : scaleStart;
-
-  let rotateStart = CONFIG.rotate ? (Math.random() * 2 - 1) * CONFIG.maxRotate : 0;
-  let rotateEnd = CONFIG.rotate ? (Math.random() * 2 - 1) * CONFIG.maxRotate : rotateStart;
-
-  // Max safe pan based on zoom
-  const maxOffsetStart = (scaleStart - 1) * 50;
-  const maxOffsetEnd = (scaleEnd - 1) * 50;
-
-  let txStart = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetStart : 0;
-  let tyStart = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetStart : 0;
-
-  let txEnd = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetEnd : txStart;
-  let tyEnd = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetEnd : tyStart;
-
-  return {
-    start: `translate(${txStart}%, ${tyStart}%) scale(${scaleStart}) rotate(${rotateStart}deg)`,
-    end: `translate(${txEnd}%, ${tyEnd}%) scale(${scaleEnd}) rotate(${rotateEnd}deg)`
-  };
+function createImage(src, z = 1) {
+  const img = document.createElement("img");
+  img.src = src;
+  img.style.zIndex = z;
+  img.classList.add("transition");
+  container.appendChild(img);
+  return img;
 }
 
 /* ===========================
-   CREATE IMAGE
+   MOTION ENGINE
 =========================== */
-function createSlide(src, z) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "slide";
-  wrapper.style.zIndex = z;
+function applyMotion(img, duration) {
+  if (!CONFIG.enableMotion) return;
 
-  const img = document.createElement("img");
-  img.src = src;
-  img.classList.add("transition");
+  const zoomStart = rand(CONFIG.minZoom, CONFIG.maxZoom);
+  const zoomEnd   = rand(CONFIG.minZoom, CONFIG.maxZoom);
 
-  wrapper.appendChild(img);
-  container.appendChild(wrapper);
+  const rotStart = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
+  const rotEnd   = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
 
-  return img;
+  // Max translation based on zoom (prevents edges showing)
+  const maxOffsetStart = (zoomStart - 1) * 50;
+  const maxOffsetEnd   = (zoomEnd - 1) * 50;
+
+  const txStart = CONFIG.enablePan ? rand(-maxOffsetStart, maxOffsetStart) : 0;
+  const tyStart = CONFIG.enablePan ? rand(-maxOffsetStart, maxOffsetStart) : 0;
+
+  const txEnd = CONFIG.enablePan ? rand(-maxOffsetEnd, maxOffsetEnd) : 0;
+  const tyEnd = CONFIG.enablePan ? rand(-maxOffsetEnd, maxOffsetEnd) : 0;
+
+  // Initial state
+  img.style.transform = `
+    translate(${txStart}%, ${tyStart}%)
+    scale(${zoomStart})
+    rotate(${rotStart}deg)
+  `;
+
+  forceReflow(img);
+
+  // Animate over full display duration
+  img.style.transitionDuration = duration + "ms";
+
+  requestAnimationFrame(() => {
+    img.style.transform = `
+      translate(${txEnd}%, ${tyEnd}%)
+      scale(${zoomEnd})
+      rotate(${rotEnd}deg)
+    `;
+  });
+}
+
+function rand(min, max) {
+  return Math.random() * (max - min) + min;
 }
 
 /* ===========================
    TRANSFORMS
 =========================== */
-function getSlideTransforms(mode) {
+function getTransforms(mode) {
   switch(mode) {
     case "left": return ["translateX(-100%)", "translateX(100%)"];
     case "right": return ["translateX(100%)", "translateX(-100%)"];
@@ -167,7 +166,7 @@ function getSlideTransforms(mode) {
    MAIN LOOP
 =========================== */
 async function start() {
-  document.title = CONFIG.title || "Loading";
+  document.title = CONFIG.title;
 
   images = await loadImages();
   if (!images.length) return;
@@ -177,14 +176,10 @@ async function start() {
   let currentSrc = CONFIG.startRandom ? getNextImage() : images[0];
   await preload(currentSrc);
 
-  let current = createSlide(currentSrc, 1);
+  let current = createImage(currentSrc, 1);
   current.style.opacity = "1";
 
-  let motion = getRandomMotion();
-  current.style.transform = motion.start;
-  current.style.transitionDuration = CONFIG.displayTime + "ms";
-  forceReflow(current);
-  current.style.transform = motion.end;
+  applyMotion(current, CONFIG.displayTime + CONFIG.transitionTime);
 
   while (true) {
     await sleep(CONFIG.displayTime);
@@ -192,34 +187,52 @@ async function start() {
     let nextSrc = getNextImage();
     await preload(nextSrc);
 
-    let next = createSlide(nextSrc, 2);
+    let next = createImage(nextSrc, 2);
 
-    const [startPos, exitPos] = getSlideTransforms(CONFIG.mode);
+    const [startPos, exitPos] = getTransforms(CONFIG.mode);
 
-    next.style.transform = startPos;
-    next.style.opacity = "1";
     next.style.transitionDuration = CONFIG.transitionTime + "ms";
+    current.style.transitionDuration = CONFIG.transitionTime + "ms";
 
-    // Apply motion to next image
-    let nextMotion = getRandomMotion();
-    next.style.transform += " " + nextMotion.start;
+    applyMotion(next, CONFIG.displayTime + CONFIG.transitionTime);
 
-    forceReflow(next);
+    if (CONFIG.mode === "fade") {
+      next.style.opacity = "0";
+      next.style.transitionDuration = CONFIG.fadeDuration + "ms";
+      current.style.transitionDuration = CONFIG.fadeDuration + "ms";
 
-    next.style.transform = "translate(0,0) " + nextMotion.end;
+      forceReflow(next);
 
-    if (CONFIG.slideStyle === "push") {
-      current.style.transform = exitPos + " " + motion.end;
+      next.style.opacity = "1";
+      current.style.opacity = "0";
+
+      await sleep(CONFIG.fadeDuration);
+
+    } else if (CONFIG.slideStyle === "overlay") {
+      next.style.transform += " " + startPos;
+
+      forceReflow(next);
+
+      next.style.transform = next.style.transform.replace(startPos, "");
+
+      await sleep(CONFIG.transitionTime);
+
+    } else if (CONFIG.slideStyle === "push") {
+      next.style.transform += " " + startPos;
+
+      forceReflow(next);
+
+      next.style.transform = next.style.transform.replace(startPos, "");
+      current.style.transform += " " + exitPos;
+
+      await sleep(CONFIG.transitionTime);
     }
-
-    await sleep(CONFIG.transitionTime);
 
     if (current.parentNode) {
       container.removeChild(current);
     }
 
     current = next;
-    motion = nextMotion;
   }
 }
 
