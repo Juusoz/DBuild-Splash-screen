@@ -3,34 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <title>Loading...</title>
-
 <style>
   html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background: black;
+    margin: 0; padding: 0;
+    overflow: hidden; background: black;
+    width: 100vw; height: 100vh;
   }
 
   #slideshow {
     position: relative;
-    width: 100vw;
-    height: 100vh;
+    width: 100%; height: 100%;
   }
 
-	img {
-		position: absolute;
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		opacity: 0;
-		/* We use a wrapper transform to combine motion and transitions */
-		transform-origin: center center; 
+  .slide-container {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    opacity: 0;
+    transition: transform var(--trans-time) linear, opacity var(--trans-time) linear;
   }
 
-  .motion-active {
-    transition: transform var(--motion-dur) linear, opacity var(--trans-dur) ease-in-out;
+  /* The motion happens on the image inside the container */
+  .slide-img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: 
+        scale(var(--zoom)) 
+        rotate(var(--rotate)) 
+        translate(var(--tx), var(--ty));
+    transition: transform var(--full-time) linear;
   }
+
+  .visible { opacity: 1; }
 </style>
 </head>
 <body>
@@ -38,225 +43,163 @@
 <div id="slideshow"></div>
 
 <script src="config.js"></script>
-
 <script>
-async function loadImages() {
-  const res = await fetch("images.json");
-  return await res.json();
-}
-
-function shuffle(a) {
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function preload(src) {
-  return new Promise(r => {
-    const i = new Image();
-    i.src = src;
-    i.onload = r;
-    i.onerror = r;
-  });
-}
-
-function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
-
-function force(el) {
-  el.getBoundingClientRect();
-}
-
 /* ===========================
-   STATE
+    CORE ENGINE
 =========================== */
 let images = [];
 let sequence = [];
 let index = 0;
-let lastImage = null;
-let container = document.getElementById("slideshow");
+const container = document.getElementById("slideshow");
 
-/* ===========================
-   SEQUENCE
-=========================== */
+async function loadImages() {
+    try {
+        const res = await fetch("images.json");
+        images = await res.json();
+        buildSequence();
+        start();
+    } catch (e) { console.error("Failed to load images.json", e); }
+}
+
 function buildSequence() {
-  sequence = shuffle([...images]);
-
-  if (sequence.length > 1 && sequence[0] === lastImage) {
-    let i = Math.floor(Math.random() * (sequence.length - 1)) + 1;
-    [sequence[0], sequence[i]] = [sequence[i], sequence[0]];
-  }
-
-  index = 0;
+    sequence = [...images].sort(() => Math.random() - 0.5);
+    index = 0;
 }
 
-function nextImage() {
-  if (index >= sequence.length) buildSequence();
-  const n = sequence[index++];
-  lastImage = n;
-  return n;
+function getNextSrc() {
+    if (index >= sequence.length) buildSequence();
+    return sequence[index++];
 }
 
-function createImage(src, z) {
-  const img = document.createElement("img");
-  img.src = src;
-  img.style.zIndex = z;
-  img.classList.add("transition");
-  container.appendChild(img);
-  return img;
+/**
+ * MATH: Calculate the scale needed to prevent background gaps during rotation
+ */
+function getSafeScale(angleDeg) {
+    const angleRad = Math.abs(angleDeg) * Math.PI / 180;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const ar = width / height;
+    
+    // Scale required to cover the viewport given a rotation
+    return Math.cos(angleRad) + (width/height > 1 ? (1/ar) : ar) * Math.sin(angleRad);
 }
 
-/* ===========================
-   SAFE MOTION ENGINE
-=========================== */
-function applyMotion(img, duration) {
-  if (!CONFIG.enableMotion) return;
-
-  // 1. Calculate Minimum Scale to hide edges during rotation
-  // A rotation of 3 degrees needs ~1.05 scale minimum. 
-  // We add this to the user's minZoom.
-  const angleRad = Math.abs(CONFIG.maxRotation) * (Math.PI / 180);
-  const rotationPadding = Math.sin(angleRad) + Math.cos(angleRad); 
-  const safeMin = Math.max(CONFIG.minZoom, rotationPadding);
-
-  const zoomStart = rand(safeMin, CONFIG.maxZoom);
-  const zoomEnd   = rand(safeMin, CONFIG.maxZoom);
-
-  const rotStart = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
-  const rotEnd   = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
-
-  // 2. Calculate Translation (Panning)
-  // We must ensure (scale - 1) * dimension / 2 is the max travel distance
-  const getMaxOffset = (scale) => ({
-    x: ((scale * 100) - 100) / 2, // percentage based is safer for different ratios
-    y: ((scale * 100) - 100) / 2
-  });
-
-  const bStart = getMaxOffset(zoomStart);
-  const bEnd = getMaxOffset(zoomEnd);
-
-  const txStart = CONFIG.enablePan ? rand(-bStart.x, bStart.x) : 0;
-  const tyStart = CONFIG.enablePan ? rand(-bStart.y, bStart.y) : 0;
-  const txEnd = CONFIG.enablePan ? rand(-bEnd.x, bEnd.x) : 0;
-  const tyEnd = CONFIG.enablePan ? rand(-bEnd.y, bEnd.y) : 0;
-
-  // Set the duration as a CSS variable so it doesn't get overwritten easily
-  img.style.setProperty('--motion-dur', duration + "ms");
-  img.classList.add('motion-active');
-
-  // Apply Start State
-  img.style.transform = `scale(${zoomStart}) rotate(${rotStart}deg) translate(${txStart}%, ${tyStart}%)`;
-
-  force(img);
-
-  // Apply End State
-  requestAnimationFrame(() => {
-    img.style.transform = `scale(${zoomEnd}) rotate(${rotEnd}deg) translate(${txEnd}%, ${tyEnd}%)`;
-  });
+function createSlide(src) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "slide-container";
+    
+    const img = document.createElement("img");
+    img.className = "slide-img";
+    img.src = src;
+    
+    wrapper.appendChild(img);
+    container.appendChild(wrapper);
+    return { wrapper, img };
 }
 
-function rand(min, max) {
-  return Math.random() * (max - min) + min;
+function applyMotion(imgElement, duration) {
+    if (!CONFIG.enableMotion) return;
+
+    // 1. Calculate random targets
+    const rot = CONFIG.enableRotate ? (Math.random() * 2 - 1) * CONFIG.maxRotation : 0;
+    
+    // 2. Calculate the base scale needed just for the rotation
+    const rotationScaleLimit = getSafeScale(rot);
+    
+    // 3. Add the user's zoom preference on top of the safety scale
+    const startZoom = rotationScaleLimit * CONFIG.minZoom;
+    const endZoom = rotationScaleLimit * CONFIG.maxZoom;
+
+    // 4. Calculate Pan Bounds (Max distance we can move without showing edge)
+    const getMaxPan = (scale) => {
+        // (Scaled Dimension - Viewport Dimension) / 2 / Scale
+        // We divide by scale because 'translate' happens before/with 'scale' logic in CSS
+        const x = ((window.innerWidth * scale) - window.innerWidth) / (2 * scale);
+        const y = ((window.innerHeight * scale) - window.innerHeight) / (2 * scale);
+        return { x, y };
+    };
+
+    const startB = getMaxPan(startZoom);
+    const endB = getMaxPan(endZoom);
+
+    const startX = (Math.random() * 2 - 1) * startB.x;
+    const startY = (Math.random() * 2 - 1) * startB.y;
+    const endX = (Math.random() * 2 - 1) * endB.x;
+    const endY = (Math.random() * 2 - 1) * endB.y;
+
+    // Apply Start State
+    imgElement.style.setProperty('--full-time', '0ms');
+    imgElement.style.setProperty('--zoom', startZoom);
+    imgElement.style.setProperty('--rotate', `0deg`);
+    imgElement.style.setProperty('--tx', `${startX}px`);
+    imgElement.style.setProperty('--ty', `${startY}px`);
+
+    // Force Reflow
+    imgElement.getBoundingClientRect();
+
+    // Apply End State
+    imgElement.style.setProperty('--full-time', `${duration}ms`);
+    imgElement.style.setProperty('--zoom', endZoom);
+    imgElement.style.setProperty('--rotate', `${rot}deg`);
+    imgElement.style.setProperty('--tx', `${endX}px`);
+    imgElement.style.setProperty('--ty', `${endY}px`);
 }
 
-/* ===========================
-   TRANSITIONS
-=========================== */
-function getTransforms(mode) {
-  switch(mode) {
-    case "left": return ["translateX(-100%)", "translateX(100%)"];
-    case "right": return ["translateX(100%)", "translateX(-100%)"];
-    case "top": return ["translateY(-100%)", "translateY(100%)"];
-    case "bottom": return ["translateY(100%)", "translateY(-100%)"];
-    default: return ["", ""];
-  }
-}
-
-/* ===========================
-   MAIN LOOP
-=========================== */
 async function start() {
-  document.title = CONFIG.title;
+    document.title = CONFIG.title;
+    const transTime = CONFIG.mode === "fade" ? CONFIG.fadeDuration : CONFIG.transitionTime;
 
-  images = await loadImages();
-  if (!images.length) return;
+    let current = createSlide(getNextSrc());
+    current.wrapper.classList.add('visible');
+    
+    // Total time the image exists (Visible + Transition Out)
+    const totalLifetime = CONFIG.displayTime + transTime;
+    applyMotion(current.img, totalLifetime);
 
-  buildSequence();
+    while (true) {
+        await new Promise(r => setTimeout(r, CONFIG.displayTime));
 
-  let currentSrc = CONFIG.startRandom ? nextImage() : images[0];
-  await preload(currentSrc);
+        const next = createSlide(getNextSrc());
+        next.wrapper.style.setProperty('--trans-time', `${transTime}ms`);
+        current.wrapper.style.setProperty('--trans-time', `${transTime}ms`);
 
-  let current = createImage(currentSrc, 1);
-  current.style.opacity = "1";
+        // Prepare Next Slide position
+        if (CONFIG.mode !== "fade") {
+            const dir = CONFIG.mode; // left, right, top, bottom
+            const x = dir === "left" ? "100%" : dir === "right" ? "-100%" : "0";
+            const y = dir === "top" ? "100%" : dir === "bottom" ? "-100%" : "0";
+            next.wrapper.style.transform = `translate(${x}, ${y})`;
+        }
 
-  let visibleDuration = CONFIG.displayTime +
-    (CONFIG.mode === "fade" ? CONFIG.fadeDuration : CONFIG.transitionTime);
+        applyMotion(next.img, totalLifetime);
+        
+        // Trigger Transition
+        requestAnimationFrame(() => {
+            next.wrapper.classList.add('visible');
+            next.wrapper.style.transform = "translate(0, 0)";
+            
+            if (CONFIG.slideStyle === "push" && CONFIG.mode !== "fade") {
+                const dir = CONFIG.mode;
+                const x = dir === "left" ? "-100%" : dir === "right" ? "100%" : "0";
+                const y = dir === "top" ? "-100%" : dir === "bottom" ? "100%" : "0";
+                current.wrapper.style.transform = `translate(${x}, ${y})`;
+            }
+            if (CONFIG.mode === "fade") {
+                current.wrapper.classList.remove('visible');
+            }
+        });
 
-  applyMotion(current, visibleDuration);
+        // Cleanup
+        const oldSlide = current;
+        setTimeout(() => {
+            if (oldSlide.wrapper.parentNode) container.removeChild(oldSlide.wrapper);
+        }, transTime + 100);
 
-  while (true) {
-    await sleep(CONFIG.displayTime);
-
-    let nextSrc = nextImage();
-    await preload(nextSrc);
-
-    let next = createImage(nextSrc, 2);
-
-    let visibleDuration = CONFIG.displayTime +
-      (CONFIG.mode === "fade" ? CONFIG.fadeDuration : CONFIG.transitionTime);
-
-    applyMotion(next, visibleDuration);
-
-    const [startPos, exitPos] = getTransforms(CONFIG.mode);
-
-    next.style.transitionDuration = CONFIG.transitionTime + "ms";
-    current.style.transitionDuration = CONFIG.transitionTime + "ms";
-
-    if (CONFIG.mode === "fade") {
-      next.style.opacity = "0";
-      next.style.transitionDuration = CONFIG.fadeDuration + "ms";
-      current.style.transitionDuration = CONFIG.fadeDuration + "ms";
-
-      force(next);
-
-      next.style.opacity = "1";
-      current.style.opacity = "0";
-
-      await sleep(CONFIG.fadeDuration);
-
-    } else if (CONFIG.slideStyle === "overlay") {
-      next.style.transform += " " + startPos;
-
-      force(next);
-
-      next.style.transform = next.style.transform.replace(startPos, "");
-
-      await sleep(CONFIG.transitionTime);
-
-    } else if (CONFIG.slideStyle === "push") {
-      next.style.transform += " " + startPos;
-
-      force(next);
-
-      next.style.transform = next.style.transform.replace(startPos, "");
-      current.style.transform += " " + exitPos;
-
-      await sleep(CONFIG.transitionTime);
+        current = next;
     }
-
-    if (current.parentNode) {
-      container.removeChild(current);
-    }
-
-    current = next;
-  }
 }
 
-start();
+loadImages();
 </script>
-
 </body>
 </html>
