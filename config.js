@@ -33,13 +33,9 @@ const CONFIG = {
 	// ===========================
 
 	enableMotion: true,
-
-	// Zoom range (must be >1 to avoid edges)
-	minZoom: 1.1,
-	maxZoom: 1.25,
-
-	// Rotation (degrees)
-	maxRotation: 5,
+	minZoom: 1.15, // slightly higher = safer edges
+	maxZoom: 1.3,
+	maxRotation: 3,
 
 	enablePan: true,
 	enableZoom: true,

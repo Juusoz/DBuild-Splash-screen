@@ -28,7 +28,7 @@
 
   .transition {
     transition-property: transform, opacity;
-    transition-timing-function: linear; /* NO SMOOTHING */
+    transition-timing-function: linear; /* 🔥 FIXED */
   }
 </style>
 </head>
@@ -44,20 +44,20 @@ async function loadImages() {
   return await res.json();
 }
 
-function shuffle(array) {
-  for (let i = array.length - 1; i > 0; i--) {
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+    [a[i], a[j]] = [a[j], a[i]];
   }
-  return array;
+  return a;
 }
 
 function preload(src) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.src = src;
-    img.onload = resolve;
-    img.onerror = resolve;
+  return new Promise(r => {
+    const i = new Image();
+    i.src = src;
+    i.onload = r;
+    i.onerror = r;
   });
 }
 
@@ -65,35 +65,41 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-function forceReflow(el) {
+function force(el) {
   el.getBoundingClientRect();
 }
 
+/* ===========================
+   STATE
+=========================== */
 let images = [];
 let sequence = [];
 let index = 0;
 let lastImage = null;
 let container = document.getElementById("slideshow");
 
+/* ===========================
+   SEQUENCE
+=========================== */
 function buildSequence() {
   sequence = shuffle([...images]);
 
   if (sequence.length > 1 && sequence[0] === lastImage) {
-    const swapIndex = Math.floor(Math.random() * (sequence.length - 1)) + 1;
-    [sequence[0], sequence[swapIndex]] = [sequence[swapIndex], sequence[0]];
+    let i = Math.floor(Math.random() * (sequence.length - 1)) + 1;
+    [sequence[0], sequence[i]] = [sequence[i], sequence[0]];
   }
 
   index = 0;
 }
 
-function getNextImage() {
+function nextImage() {
   if (index >= sequence.length) buildSequence();
-  const next = sequence[index++];
-  lastImage = next;
-  return next;
+  const n = sequence[index++];
+  lastImage = n;
+  return n;
 }
 
-function createImage(src, z = 1) {
+function createImage(src, z) {
   const img = document.createElement("img");
   img.src = src;
   img.style.zIndex = z;
@@ -103,43 +109,55 @@ function createImage(src, z = 1) {
 }
 
 /* ===========================
-   SAFER MOTION ENGINE
+   SAFE MOTION ENGINE
 =========================== */
-function applyMotion(img, visibleTime) {
+function applyMotion(img, duration) {
   if (!CONFIG.enableMotion) return;
+
+  const rect = img.getBoundingClientRect();
+  const vw = rect.width;
+  const vh = rect.height;
 
   const zoomStart = rand(CONFIG.minZoom, CONFIG.maxZoom);
   const zoomEnd   = rand(CONFIG.minZoom, CONFIG.maxZoom);
 
-  // Reduce rotation impact (important for bounds safety)
   const rotStart = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
   const rotEnd   = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
 
-  // SAFETY: reduce pan range to avoid edges even with rotation + aspect mismatch
-  const safeFactor = 0.6;
+  // Compute SAFE movement bounds
+  function getBounds(scale) {
+    const scaledW = vw * scale;
+    const scaledH = vh * scale;
 
-  const maxOffsetStart = (zoomStart - 1) * 50 * safeFactor;
-  const maxOffsetEnd   = (zoomEnd - 1) * 50 * safeFactor;
+    return {
+      x: (scaledW - vw) / 2,
+      y: (scaledH - vh) / 2
+    };
+  }
 
-  const txStart = CONFIG.enablePan ? rand(-maxOffsetStart, maxOffsetStart) : 0;
-  const tyStart = CONFIG.enablePan ? rand(-maxOffsetStart, maxOffsetStart) : 0;
+  const bStart = getBounds(zoomStart);
+  const bEnd   = getBounds(zoomEnd);
 
-  const txEnd = CONFIG.enablePan ? rand(-maxOffsetEnd, maxOffsetEnd) : 0;
-  const tyEnd = CONFIG.enablePan ? rand(-maxOffsetEnd, maxOffsetEnd) : 0;
+  const txStart = CONFIG.enablePan ? rand(-bStart.x, bStart.x) : 0;
+  const tyStart = CONFIG.enablePan ? rand(-bStart.y, bStart.y) : 0;
 
+  const txEnd = CONFIG.enablePan ? rand(-bEnd.x, bEnd.x) : 0;
+  const tyEnd = CONFIG.enablePan ? rand(-bEnd.y, bEnd.y) : 0;
+
+  // Apply start state
   img.style.transform = `
-    translate(${txStart}%, ${tyStart}%)
+    translate(${txStart}px, ${tyStart}px)
     scale(${zoomStart})
     rotate(${rotStart}deg)
   `;
 
-  forceReflow(img);
+  force(img);
 
-  img.style.transitionDuration = visibleTime + "ms";
+  img.style.transitionDuration = duration + "ms";
 
   requestAnimationFrame(() => {
     img.style.transform = `
-      translate(${txEnd}%, ${tyEnd}%)
+      translate(${txEnd}px, ${tyEnd}px)
       scale(${zoomEnd})
       rotate(${rotEnd}deg)
     `;
@@ -150,6 +168,9 @@ function rand(min, max) {
   return Math.random() * (max - min) + min;
 }
 
+/* ===========================
+   TRANSITIONS
+=========================== */
 function getTransforms(mode) {
   switch(mode) {
     case "left": return ["translateX(-100%)", "translateX(100%)"];
@@ -171,35 +192,41 @@ async function start() {
 
   buildSequence();
 
-  let currentSrc = CONFIG.startRandom ? getNextImage() : images[0];
+  let currentSrc = CONFIG.startRandom ? nextImage() : images[0];
   await preload(currentSrc);
 
   let current = createImage(currentSrc, 1);
   current.style.opacity = "1";
 
-  applyMotion(current, CONFIG.displayTime + CONFIG.transitionTime);
+  let visibleDuration = CONFIG.displayTime +
+    (CONFIG.mode === "fade" ? CONFIG.fadeDuration : CONFIG.transitionTime);
+
+  applyMotion(current, visibleDuration);
 
   while (true) {
     await sleep(CONFIG.displayTime);
 
-    let nextSrc = getNextImage();
+    let nextSrc = nextImage();
     await preload(nextSrc);
 
     let next = createImage(nextSrc, 2);
+
+    let visibleDuration = CONFIG.displayTime +
+      (CONFIG.mode === "fade" ? CONFIG.fadeDuration : CONFIG.transitionTime);
+
+    applyMotion(next, visibleDuration);
 
     const [startPos, exitPos] = getTransforms(CONFIG.mode);
 
     next.style.transitionDuration = CONFIG.transitionTime + "ms";
     current.style.transitionDuration = CONFIG.transitionTime + "ms";
 
-    applyMotion(next, CONFIG.displayTime + CONFIG.transitionTime);
-
     if (CONFIG.mode === "fade") {
       next.style.opacity = "0";
       next.style.transitionDuration = CONFIG.fadeDuration + "ms";
       current.style.transitionDuration = CONFIG.fadeDuration + "ms";
 
-      forceReflow(next);
+      force(next);
 
       next.style.opacity = "1";
       current.style.opacity = "0";
@@ -209,7 +236,7 @@ async function start() {
     } else if (CONFIG.slideStyle === "overlay") {
       next.style.transform += " " + startPos;
 
-      forceReflow(next);
+      force(next);
 
       next.style.transform = next.style.transform.replace(startPos, "");
 
@@ -218,7 +245,7 @@ async function start() {
     } else if (CONFIG.slideStyle === "push") {
       next.style.transform += " " + startPos;
 
-      forceReflow(next);
+      force(next);
 
       next.style.transform = next.style.transform.replace(startPos, "");
       current.style.transform += " " + exitPos;
