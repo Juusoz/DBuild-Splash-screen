@@ -28,7 +28,7 @@
 
   .transition {
     transition-property: transform, opacity;
-    transition-timing-function: ease;
+    transition-timing-function: linear; /* NO SMOOTHING */
   }
 </style>
 </head>
@@ -103,20 +103,23 @@ function createImage(src, z = 1) {
 }
 
 /* ===========================
-   MOTION ENGINE
+   SAFER MOTION ENGINE
 =========================== */
-function applyMotion(img, duration) {
+function applyMotion(img, visibleTime) {
   if (!CONFIG.enableMotion) return;
 
   const zoomStart = rand(CONFIG.minZoom, CONFIG.maxZoom);
   const zoomEnd   = rand(CONFIG.minZoom, CONFIG.maxZoom);
 
+  // Reduce rotation impact (important for bounds safety)
   const rotStart = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
   const rotEnd   = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
 
-  // Max translation based on zoom (prevents edges showing)
-  const maxOffsetStart = (zoomStart - 1) * 50;
-  const maxOffsetEnd   = (zoomEnd - 1) * 50;
+  // SAFETY: reduce pan range to avoid edges even with rotation + aspect mismatch
+  const safeFactor = 0.6;
+
+  const maxOffsetStart = (zoomStart - 1) * 50 * safeFactor;
+  const maxOffsetEnd   = (zoomEnd - 1) * 50 * safeFactor;
 
   const txStart = CONFIG.enablePan ? rand(-maxOffsetStart, maxOffsetStart) : 0;
   const tyStart = CONFIG.enablePan ? rand(-maxOffsetStart, maxOffsetStart) : 0;
@@ -124,7 +127,6 @@ function applyMotion(img, duration) {
   const txEnd = CONFIG.enablePan ? rand(-maxOffsetEnd, maxOffsetEnd) : 0;
   const tyEnd = CONFIG.enablePan ? rand(-maxOffsetEnd, maxOffsetEnd) : 0;
 
-  // Initial state
   img.style.transform = `
     translate(${txStart}%, ${tyStart}%)
     scale(${zoomStart})
@@ -133,8 +135,7 @@ function applyMotion(img, duration) {
 
   forceReflow(img);
 
-  // Animate over full display duration
-  img.style.transitionDuration = duration + "ms";
+  img.style.transitionDuration = visibleTime + "ms";
 
   requestAnimationFrame(() => {
     img.style.transform = `
@@ -149,9 +150,6 @@ function rand(min, max) {
   return Math.random() * (max - min) + min;
 }
 
-/* ===========================
-   TRANSFORMS
-=========================== */
 function getTransforms(mode) {
   switch(mode) {
     case "left": return ["translateX(-100%)", "translateX(100%)"];
