@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Loading...</title>
+
 <style>
   html, body {
     margin: 0;
@@ -35,12 +36,15 @@
 
 <div id="slideshow"></div>
 
+<!-- LOAD CONFIG FIRST -->
+<script src="config.js"></script>
+
 <script>
 /* ===========================
-   LOAD FILES
+   LOAD IMAGES
 =========================== */
-async function loadJSON(path) {
-  const res = await fetch(path);
+async function loadImages() {
+  const res = await fetch("images.json");
   return await res.json();
 }
 
@@ -75,7 +79,6 @@ function forceReflow(el) {
 /* ===========================
    STATE
 =========================== */
-let config = {};
 let images = [];
 let sequence = [];
 let index = 0;
@@ -129,51 +132,46 @@ function getTransforms(mode) {
    MAIN
 =========================== */
 async function start() {
-  // Load config + images
-  config = await loadJSON("config.json");
-  images = await loadJSON("images.json");
+  // Apply title from config
+  document.title = CONFIG.title || "Slideshow";
 
+  images = await loadImages();
   if (!images.length) return;
-
-  // Set page title
-  if (config.title) {
-    document.title = config.title;
-  }
 
   buildSequence();
 
-  let currentSrc = config.startRandom ? getNextImage() : images[0];
+  let currentSrc = CONFIG.startRandom ? getNextImage() : images[0];
   await preload(currentSrc);
 
   let current = createImage(currentSrc, 1);
   current.style.opacity = "1";
 
   while (true) {
-    await sleep(config.displayTime);
+    await sleep(CONFIG.displayTime);
 
     let nextSrc = getNextImage();
     await preload(nextSrc);
 
     let next = createImage(nextSrc, 2);
 
-    const [startPos, exitPos] = getTransforms(config.mode);
+    const [startPos, exitPos] = getTransforms(CONFIG.mode);
 
-    next.style.transitionDuration = config.transitionTime + "ms";
-    current.style.transitionDuration = config.transitionTime + "ms";
+    next.style.transitionDuration = CONFIG.transitionTime + "ms";
+    current.style.transitionDuration = CONFIG.transitionTime + "ms";
 
-    if (config.mode === "fade") {
+    if (CONFIG.mode === "fade") {
       next.style.opacity = "0";
-      next.style.transitionDuration = config.fadeDuration + "ms";
-      current.style.transitionDuration = config.fadeDuration + "ms";
+      next.style.transitionDuration = CONFIG.fadeDuration + "ms";
+      current.style.transitionDuration = CONFIG.fadeDuration + "ms";
 
       forceReflow(next);
 
       next.style.opacity = "1";
       current.style.opacity = "0";
 
-      await sleep(config.fadeDuration);
+      await sleep(CONFIG.fadeDuration);
 
-    } else if (config.slideStyle === "overlay") {
+    } else if (CONFIG.slideStyle === "overlay") {
       next.style.transform = startPos;
       next.style.opacity = "1";
 
@@ -181,9 +179,9 @@ async function start() {
 
       next.style.transform = "translate(0,0)";
 
-      await sleep(config.transitionTime);
+      await sleep(CONFIG.transitionTime);
 
-    } else if (config.slideStyle === "push") {
+    } else if (CONFIG.slideStyle === "push") {
       next.style.transform = startPos;
       next.style.opacity = "1";
 
@@ -192,7 +190,7 @@ async function start() {
       next.style.transform = "translate(0,0)";
       current.style.transform = exitPos;
 
-      await sleep(config.transitionTime);
+      await sleep(CONFIG.transitionTime);
     }
 
     if (current.parentNode) {
