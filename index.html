@@ -18,17 +18,18 @@
     height: 100vh;
   }
 
-  img {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0;
+	img {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		opacity: 0;
+		/* We use a wrapper transform to combine motion and transitions */
+		transform-origin: center center; 
   }
 
-  .transition {
-    transition-property: transform, opacity;
-    transition-timing-function: linear; /* 🔥 FIXED */
+  .motion-active {
+    transition: transform var(--motion-dur) linear, opacity var(--trans-dur) ease-in-out;
   }
 </style>
 </head>
@@ -114,53 +115,46 @@ function createImage(src, z) {
 function applyMotion(img, duration) {
   if (!CONFIG.enableMotion) return;
 
-  const rect = img.getBoundingClientRect();
-  const vw = rect.width;
-  const vh = rect.height;
+  // 1. Calculate Minimum Scale to hide edges during rotation
+  // A rotation of 3 degrees needs ~1.05 scale minimum. 
+  // We add this to the user's minZoom.
+  const angleRad = Math.abs(CONFIG.maxRotation) * (Math.PI / 180);
+  const rotationPadding = Math.sin(angleRad) + Math.cos(angleRad); 
+  const safeMin = Math.max(CONFIG.minZoom, rotationPadding);
 
-  const zoomStart = rand(CONFIG.minZoom, CONFIG.maxZoom);
-  const zoomEnd   = rand(CONFIG.minZoom, CONFIG.maxZoom);
+  const zoomStart = rand(safeMin, CONFIG.maxZoom);
+  const zoomEnd   = rand(safeMin, CONFIG.maxZoom);
 
   const rotStart = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
   const rotEnd   = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
 
-  // Compute SAFE movement bounds
-  function getBounds(scale) {
-    const scaledW = vw * scale;
-    const scaledH = vh * scale;
+  // 2. Calculate Translation (Panning)
+  // We must ensure (scale - 1) * dimension / 2 is the max travel distance
+  const getMaxOffset = (scale) => ({
+    x: ((scale * 100) - 100) / 2, // percentage based is safer for different ratios
+    y: ((scale * 100) - 100) / 2
+  });
 
-    return {
-      x: (scaledW - vw) / 2,
-      y: (scaledH - vh) / 2
-    };
-  }
-
-  const bStart = getBounds(zoomStart);
-  const bEnd   = getBounds(zoomEnd);
+  const bStart = getMaxOffset(zoomStart);
+  const bEnd = getMaxOffset(zoomEnd);
 
   const txStart = CONFIG.enablePan ? rand(-bStart.x, bStart.x) : 0;
   const tyStart = CONFIG.enablePan ? rand(-bStart.y, bStart.y) : 0;
-
   const txEnd = CONFIG.enablePan ? rand(-bEnd.x, bEnd.x) : 0;
   const tyEnd = CONFIG.enablePan ? rand(-bEnd.y, bEnd.y) : 0;
 
-  // Apply start state
-  img.style.transform = `
-    translate(${txStart}px, ${tyStart}px)
-    scale(${zoomStart})
-    rotate(${rotStart}deg)
-  `;
+  // Set the duration as a CSS variable so it doesn't get overwritten easily
+  img.style.setProperty('--motion-dur', duration + "ms");
+  img.classList.add('motion-active');
+
+  // Apply Start State
+  img.style.transform = `scale(${zoomStart}) rotate(${rotStart}deg) translate(${txStart}%, ${tyStart}%)`;
 
   force(img);
 
-  img.style.transitionDuration = duration + "ms";
-
+  // Apply End State
   requestAnimationFrame(() => {
-    img.style.transform = `
-      translate(${txEnd}px, ${tyEnd}px)
-      scale(${zoomEnd})
-      rotate(${rotEnd}deg)
-    `;
+    img.style.transform = `scale(${zoomEnd}) rotate(${rotEnd}deg) translate(${txEnd}%, ${tyEnd}%)`;
   });
 }
 
