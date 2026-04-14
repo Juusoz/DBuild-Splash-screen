@@ -24,7 +24,7 @@
     height: 100%;
     object-fit: cover;
     opacity: 0;
-    transform: scale(1);
+    will-change: transform;
   }
 
   .transition {
@@ -90,6 +90,37 @@ let lastImage = null;
 let container = document.getElementById("slideshow");
 
 /* ===========================
+   KEN BURNS EFFECT
+=========================== */
+function applyKenBurns(img) {
+  if (!CONFIG.kenBurns) return;
+
+  const scaleStart = rand(CONFIG.kenBurnsScaleMin, CONFIG.kenBurnsScaleMax);
+  const scaleEnd   = rand(CONFIG.kenBurnsScaleMin, CONFIG.kenBurnsScaleMax);
+
+  const xStart = rand(-5, 5);
+  const yStart = rand(-5, 5);
+  const xEnd   = rand(-5, 5);
+  const yEnd   = rand(-5, 5);
+
+  img.style.transition += `, transform ${CONFIG.displayTime}ms linear`;
+
+  img.style.transform = `
+    scale(${scaleStart})
+    translate(${xStart}%, ${yStart}%)
+  `;
+
+  forceReflow(img);
+
+  requestAnimationFrame(() => {
+    img.style.transform = `
+      scale(${scaleEnd})
+      translate(${xEnd}%, ${yEnd}%)
+    `;
+  });
+}
+
+/* ===========================
    HELPERS
 =========================== */
 function buildSequence() {
@@ -104,7 +135,10 @@ function buildSequence() {
 }
 
 function getNextImage() {
-  if (index >= sequence.length) buildSequence();
+  if (index >= sequence.length) {
+    buildSequence();
+  }
+
   const next = sequence[index++];
   lastImage = next;
   return next;
@@ -130,33 +164,10 @@ function getTransforms(mode) {
 }
 
 /* ===========================
-   MOTION EFFECT
-=========================== */
-function applyMotion(img) {
-  if (!CONFIG.motion || !CONFIG.motion.enabled) return;
-
-  const zoomStart = rand(CONFIG.motion.zoomMin, CONFIG.motion.zoomMax);
-  const zoomEnd   = rand(CONFIG.motion.zoomMin, CONFIG.motion.zoomMax);
-
-  const panX = rand(-CONFIG.motion.panMax, CONFIG.motion.panMax);
-  const panY = rand(-CONFIG.motion.panMax, CONFIG.motion.panMax);
-
-  // Initial state
-  img.style.transform = `scale(${zoomStart}) translate(0%, 0%)`;
-
-  // Force apply
-  forceReflow(img);
-
-  // Animate slowly
-  img.style.transitionDuration = CONFIG.motion.duration + "ms";
-  img.style.transform = `scale(${zoomEnd}) translate(${panX}%, ${panY}%)`;
-}
-
-/* ===========================
-   MAIN LOOP
+   MAIN
 =========================== */
 async function start() {
-  document.title = CONFIG.title || "Slideshow";
+  document.title = CONFIG.title || "Loading...";
 
   images = await loadImages();
   if (!images.length) return;
@@ -169,7 +180,7 @@ async function start() {
   let current = createImage(currentSrc, 1);
   current.style.opacity = "1";
 
-  applyMotion(current);
+  applyKenBurns(current);
 
   while (true) {
     await sleep(CONFIG.displayTime);
@@ -186,13 +197,15 @@ async function start() {
 
     if (CONFIG.mode === "fade") {
       next.style.opacity = "0";
+      next.style.transitionDuration = CONFIG.fadeDuration + "ms";
+      current.style.transitionDuration = CONFIG.fadeDuration + "ms";
 
       forceReflow(next);
 
       next.style.opacity = "1";
       current.style.opacity = "0";
 
-      applyMotion(next);
+      applyKenBurns(next);
 
       await sleep(CONFIG.fadeDuration);
 
@@ -204,7 +217,7 @@ async function start() {
 
       next.style.transform = "translate(0,0)";
 
-      applyMotion(next);
+      applyKenBurns(next);
 
       await sleep(CONFIG.transitionTime);
 
@@ -217,12 +230,15 @@ async function start() {
       next.style.transform = "translate(0,0)";
       current.style.transform = exitPos;
 
-      applyMotion(next);
+      applyKenBurns(next);
 
       await sleep(CONFIG.transitionTime);
     }
 
-    if (current.parentNode) container.removeChild(current);
+    if (current.parentNode) {
+      container.removeChild(current);
+    }
+
     current = next;
   }
 }

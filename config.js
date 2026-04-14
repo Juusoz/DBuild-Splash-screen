@@ -28,19 +28,11 @@ const CONFIG = {
   // Start from a random image
   startRandom: true
   
-  // Motion effect (Ken Burns style)
-	motion: {
-	  enabled: true,
+  // Enable subtle motion effect
+	kenBurns: true,
 
-	  // Zoom range (1 = no zoom)
-	  zoomMin: 1.05,
-	  zoomMax: 1.15,
-
-	  // Max pan offset (% of image size)
-	  panMax: 10,
-
-	  // Duration should match or exceed displayTime
-	  duration: 6000
-	}
+	// How strong the zoom is (1 = no zoom)
+	kenBurnsScaleMin: 1.05,
+	kenBurnsScaleMax: 1.15,
 
 };
