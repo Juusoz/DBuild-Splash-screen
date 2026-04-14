@@ -28,15 +28,18 @@ const CONFIG = {
 	// Start from a random image
 	startRandom: true,
 
-	// Motion effect (Ken Burns style)
-	kenBurns: {
-		enabled: true,
+	// Movement effects (Ken Burns style)
+	enableMotion: true,
 
-		// Maximum zoom (e.g. 1.2 = 20% zoom)
-		maxZoom: 1.2,
+	// Max zoom multiplier (1.0 = no zoom)
+	maxZoom: 1.25,
 
-		// Max pan offset as % of image (safe range auto-limited)
-		maxPan: 0.1
-	}
+	// Max rotation in degrees (keep small!)
+	maxRotate: 3,
+
+	// Enable individual effects
+	pan: true,
+	zoom: true,
+	rotate: true
 
 };

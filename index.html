@@ -5,38 +5,39 @@
 <title>Loading...</title>
 
 <style>
-html, body {
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  background: black;
-}
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: black;
+  }
 
-#slideshow {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
-}
+  #slideshow {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+  }
 
-/* OUTER container (handles slide/fade) */
-.slide {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  opacity: 0;
-}
+  .slide {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* important */
+  }
 
-/* INNER image (handles Ken Burns) */
-.slide img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+  img {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    will-change: transform, opacity;
+    opacity: 0;
+  }
 
-.transition {
-  transition: transform 1s ease, opacity 1s ease;
-}
+  .transition {
+    transition-property: transform, opacity;
+    transition-timing-function: ease;
+  }
 </style>
 </head>
 <body>
@@ -77,7 +78,7 @@ function forceReflow(el) {
 }
 
 /* ===========================
-   STATE
+   SEQUENCE SYSTEM
 =========================== */
 let images = [];
 let sequence = [];
@@ -85,9 +86,6 @@ let index = 0;
 let lastImage = null;
 let container = document.getElementById("slideshow");
 
-/* ===========================
-   SEQUENCE
-=========================== */
 function buildSequence() {
   sequence = shuffle([...images]);
 
@@ -100,76 +98,62 @@ function buildSequence() {
 }
 
 function getNextImage() {
-  if (index >= sequence.length) {
-    buildSequence();
-  }
-
+  if (index >= sequence.length) buildSequence();
   const next = sequence[index++];
   lastImage = next;
   return next;
 }
 
 /* ===========================
-   CREATE SLIDE (FIXED)
+   MOTION GENERATOR
 =========================== */
-function createSlide(src, z = 1) {
-  const slide = document.createElement("div");
-  slide.className = "slide transition";
-  slide.style.zIndex = z;
+function getRandomMotion() {
+  if (!CONFIG.enableMotion) return { start: "", end: "" };
 
-  const img = document.createElement("img");
-  img.src = src;
+  let scaleStart = CONFIG.zoom ? (1 + Math.random() * (CONFIG.maxZoom - 1)) : 1;
+  let scaleEnd = CONFIG.zoom ? (1 + Math.random() * (CONFIG.maxZoom - 1)) : scaleStart;
 
-  slide.appendChild(img);
-  container.appendChild(slide);
+  let rotateStart = CONFIG.rotate ? (Math.random() * 2 - 1) * CONFIG.maxRotate : 0;
+  let rotateEnd = CONFIG.rotate ? (Math.random() * 2 - 1) * CONFIG.maxRotate : rotateStart;
 
-  applyKenBurns(img);
+  // Max safe pan based on zoom
+  const maxOffsetStart = (scaleStart - 1) * 50;
+  const maxOffsetEnd = (scaleEnd - 1) * 50;
 
-  return slide;
+  let txStart = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetStart : 0;
+  let tyStart = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetStart : 0;
+
+  let txEnd = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetEnd : txStart;
+  let tyEnd = CONFIG.pan ? (Math.random() * 2 - 1) * maxOffsetEnd : tyStart;
+
+  return {
+    start: `translate(${txStart}%, ${tyStart}%) scale(${scaleStart}) rotate(${rotateStart}deg)`,
+    end: `translate(${txEnd}%, ${tyEnd}%) scale(${scaleEnd}) rotate(${rotateEnd}deg)`
+  };
 }
 
 /* ===========================
-   KEN BURNS (FIXED)
+   CREATE IMAGE
 =========================== */
-function applyKenBurns(img) {
-  if (!CONFIG.kenBurns?.enabled) return;
+function createSlide(src, z) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "slide";
+  wrapper.style.zIndex = z;
 
-  const maxZoom = CONFIG.kenBurns.maxZoom;
-  const maxPan = CONFIG.kenBurns.maxPan;
+  const img = document.createElement("img");
+  img.src = src;
+  img.classList.add("transition");
 
-  const zoomIn = Math.random() > 0.5;
+  wrapper.appendChild(img);
+  container.appendChild(wrapper);
 
-  const startScale = zoomIn ? 1 : maxZoom;
-  const endScale = zoomIn ? maxZoom : 1;
-
-  const maxOffset = (Math.max(startScale, endScale) - 1) / 2;
-
-  const pan1x = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
-  const pan1y = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
-
-  const pan2x = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
-  const pan2y = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
-
-  // IMPORTANT: run longer than displayTime to avoid stopping early
-  const duration = CONFIG.displayTime + CONFIG.transitionTime;
-
-  img.style.transition = `transform ${duration}ms linear`;
-
-  img.style.transform =
-    `scale(${startScale}) translate(${pan1x * 100}%, ${pan1y * 100}%)`;
-
-  forceReflow(img);
-
-  requestAnimationFrame(() => {
-    img.style.transform =
-      `scale(${endScale}) translate(${pan2x * 100}%, ${pan2y * 100}%)`;
-  });
+  return img;
 }
 
 /* ===========================
    TRANSFORMS
 =========================== */
-function getTransforms(mode) {
+function getSlideTransforms(mode) {
   switch(mode) {
     case "left": return ["translateX(-100%)", "translateX(100%)"];
     case "right": return ["translateX(100%)", "translateX(-100%)"];
@@ -183,63 +167,59 @@ function getTransforms(mode) {
    MAIN LOOP
 =========================== */
 async function start() {
-  document.title = CONFIG.title;
+  document.title = CONFIG.title || "Loading";
 
   images = await loadImages();
   if (!images.length) return;
 
   buildSequence();
 
-  let current = createSlide(getNextImage(), 1);
+  let currentSrc = CONFIG.startRandom ? getNextImage() : images[0];
+  await preload(currentSrc);
+
+  let current = createSlide(currentSrc, 1);
   current.style.opacity = "1";
+
+  let motion = getRandomMotion();
+  current.style.transform = motion.start;
+  current.style.transitionDuration = CONFIG.displayTime + "ms";
+  forceReflow(current);
+  current.style.transform = motion.end;
 
   while (true) {
     await sleep(CONFIG.displayTime);
 
-    let next = createSlide(getNextImage(), 2);
+    let nextSrc = getNextImage();
+    await preload(nextSrc);
 
-    const [startPos, exitPos] = getTransforms(CONFIG.mode);
+    let next = createSlide(nextSrc, 2);
 
+    const [startPos, exitPos] = getSlideTransforms(CONFIG.mode);
+
+    next.style.transform = startPos;
+    next.style.opacity = "1";
     next.style.transitionDuration = CONFIG.transitionTime + "ms";
-    current.style.transitionDuration = CONFIG.transitionTime + "ms";
 
-    if (CONFIG.mode === "fade") {
-      next.style.opacity = "0";
+    // Apply motion to next image
+    let nextMotion = getRandomMotion();
+    next.style.transform += " " + nextMotion.start;
 
-      forceReflow(next);
+    forceReflow(next);
 
-      next.style.opacity = "1";
-      current.style.opacity = "0";
+    next.style.transform = "translate(0,0) " + nextMotion.end;
 
-      await sleep(CONFIG.fadeDuration);
-
-    } else if (CONFIG.slideStyle === "overlay") {
-      next.style.transform = startPos;
-      next.style.opacity = "1";
-
-      forceReflow(next);
-
-      next.style.transform = "translate(0,0)";
-
-      await sleep(CONFIG.transitionTime);
-
-    } else {
-      next.style.transform = startPos;
-      next.style.opacity = "1";
-
-      forceReflow(next);
-
-      next.style.transform = "translate(0,0)";
-      current.style.transform = exitPos;
-
-      await sleep(CONFIG.transitionTime);
+    if (CONFIG.slideStyle === "push") {
+      current.style.transform = exitPos + " " + motion.end;
     }
+
+    await sleep(CONFIG.transitionTime);
 
     if (current.parentNode) {
       container.removeChild(current);
     }
 
     current = next;
+    motion = nextMotion;
   }
 }
 
