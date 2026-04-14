@@ -1,42 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Loading...</title>
-<style>
-  html, body {
-    margin: 0; padding: 0;
-    overflow: hidden; background: black;
-    width: 100vw; height: 100vh;
-  }
+    <meta charset="UTF-8">
+    <title>Loading...</title>
+    <style>
+        html, body {
+            margin: 0; padding: 0;
+            overflow: hidden; background: #000;
+            width: 100vw; height: 100vh;
+        }
 
-  #slideshow {
-    position: relative;
-    width: 100%; height: 100%;
-  }
+        #slideshow {
+            position: relative;
+            width: 100%; height: 100%;
+            perspective: 1000px;
+        }
 
-  .slide-container {
-    position: absolute;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-    overflow: hidden;
-    opacity: 0;
-    transition: transform var(--trans-time) linear, opacity var(--trans-time) linear;
-  }
+        /* The wrapper handles the slide/fade logic */
+        .slide-stage {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            transition-timing-function: ease-in-out;
+            z-index: 1;
+        }
 
-  /* The motion happens on the image inside the container */
-  .slide-img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-    transform: 
-        scale(var(--zoom)) 
-        rotate(var(--rotate)) 
-        translate(var(--tx), var(--ty));
-    transition: transform var(--full-time) linear;
-  }
-
-  .visible { opacity: 1; }
-</style>
+        /* The image handles the Ken Burns motion */
+        .slide-stage img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            will-change: transform;
+            transition-timing-function: linear; /* Crucial for smooth motion */
+        }
+    </style>
 </head>
 <body>
 
@@ -45,161 +44,167 @@
 <script src="config.js"></script>
 <script>
 /* ===========================
-    CORE ENGINE
+   UTILITIES & ENGINE
 =========================== */
-let images = [];
-let sequence = [];
-let index = 0;
 const container = document.getElementById("slideshow");
+const rand = (min, max) => Math.random() * (max - min) + min;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function loadImages() {
     try {
         const res = await fetch("images.json");
-        images = await res.json();
-        buildSequence();
-        start();
-    } catch (e) { console.error("Failed to load images.json", e); }
-}
-
-function buildSequence() {
-    sequence = [...images].sort(() => Math.random() - 0.5);
-    index = 0;
-}
-
-function getNextSrc() {
-    if (index >= sequence.length) buildSequence();
-    return sequence[index++];
-}
-
-/**
- * MATH: Calculate the scale needed to prevent background gaps during rotation
- */
-function getSafeScale(angleDeg) {
-    const angleRad = Math.abs(angleDeg) * Math.PI / 180;
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const ar = width / height;
-    
-    // Scale required to cover the viewport given a rotation
-    return Math.cos(angleRad) + (width/height > 1 ? (1/ar) : ar) * Math.sin(angleRad);
-}
-
-function createSlide(src) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "slide-container";
-    
-    const img = document.createElement("img");
-    img.className = "slide-img";
-    img.src = src;
-    
-    wrapper.appendChild(img);
-    container.appendChild(wrapper);
-    return { wrapper, img };
-}
-
-function applyMotion(imgElement, duration) {
-    if (!CONFIG.enableMotion) return;
-
-    // 1. Calculate random targets
-    const rot = CONFIG.enableRotate ? (Math.random() * 2 - 1) * CONFIG.maxRotation : 0;
-    
-    // 2. Calculate the base scale needed just for the rotation
-    const rotationScaleLimit = getSafeScale(rot);
-    
-    // 3. Add the user's zoom preference on top of the safety scale
-    const startZoom = rotationScaleLimit * CONFIG.minZoom;
-    const endZoom = rotationScaleLimit * CONFIG.maxZoom;
-
-    // 4. Calculate Pan Bounds (Max distance we can move without showing edge)
-    const getMaxPan = (scale) => {
-        // (Scaled Dimension - Viewport Dimension) / 2 / Scale
-        // We divide by scale because 'translate' happens before/with 'scale' logic in CSS
-        const x = ((window.innerWidth * scale) - window.innerWidth) / (2 * scale);
-        const y = ((window.innerHeight * scale) - window.innerHeight) / (2 * scale);
-        return { x, y };
-    };
-
-    const startB = getMaxPan(startZoom);
-    const endB = getMaxPan(endZoom);
-
-    const startX = (Math.random() * 2 - 1) * startB.x;
-    const startY = (Math.random() * 2 - 1) * startB.y;
-    const endX = (Math.random() * 2 - 1) * endB.x;
-    const endY = (Math.random() * 2 - 1) * endB.y;
-
-    // Apply Start State
-    imgElement.style.setProperty('--full-time', '0ms');
-    imgElement.style.setProperty('--zoom', startZoom);
-    imgElement.style.setProperty('--rotate', `0deg`);
-    imgElement.style.setProperty('--tx', `${startX}px`);
-    imgElement.style.setProperty('--ty', `${startY}px`);
-
-    // Force Reflow
-    imgElement.getBoundingClientRect();
-
-    // Apply End State
-    imgElement.style.setProperty('--full-time', `${duration}ms`);
-    imgElement.style.setProperty('--zoom', endZoom);
-    imgElement.style.setProperty('--rotate', `${rot}deg`);
-    imgElement.style.setProperty('--tx', `${endX}px`);
-    imgElement.style.setProperty('--ty', `${endY}px`);
-}
-
-async function start() {
-    document.title = CONFIG.title;
-    const transTime = CONFIG.mode === "fade" ? CONFIG.fadeDuration : CONFIG.transitionTime;
-
-    let current = createSlide(getNextSrc());
-    current.wrapper.classList.add('visible');
-    
-    // Total time the image exists (Visible + Transition Out)
-    const totalLifetime = CONFIG.displayTime + transTime;
-    applyMotion(current.img, totalLifetime);
-
-    while (true) {
-        await new Promise(r => setTimeout(r, CONFIG.displayTime));
-
-        const next = createSlide(getNextSrc());
-        next.wrapper.style.setProperty('--trans-time', `${transTime}ms`);
-        current.wrapper.style.setProperty('--trans-time', `${transTime}ms`);
-
-        // Prepare Next Slide position
-        if (CONFIG.mode !== "fade") {
-            const dir = CONFIG.mode; // left, right, top, bottom
-            const x = dir === "left" ? "100%" : dir === "right" ? "-100%" : "0";
-            const y = dir === "top" ? "100%" : dir === "bottom" ? "-100%" : "0";
-            next.wrapper.style.transform = `translate(${x}, ${y})`;
-        }
-
-        applyMotion(next.img, totalLifetime);
-        
-        // Trigger Transition
-        requestAnimationFrame(() => {
-            next.wrapper.classList.add('visible');
-            next.wrapper.style.transform = "translate(0, 0)";
-            
-            if (CONFIG.slideStyle === "push" && CONFIG.mode !== "fade") {
-                const dir = CONFIG.mode;
-                const x = dir === "left" ? "-100%" : dir === "right" ? "100%" : "0";
-                const y = dir === "top" ? "-100%" : dir === "bottom" ? "100%" : "0";
-                current.wrapper.style.transform = `translate(${x}, ${y})`;
-            }
-            if (CONFIG.mode === "fade") {
-                current.wrapper.classList.remove('visible');
-            }
-        });
-
-        // Cleanup
-        const oldSlide = current;
-        setTimeout(() => {
-            if (oldSlide.wrapper.parentNode) container.removeChild(oldSlide.wrapper);
-        }, transTime + 100);
-
-        current = next;
+        return await res.json();
+    } catch(e) {
+        console.error("Failed to load images.json", e);
+        return [];
     }
 }
 
-loadImages();
+function preload(src) {
+    return new Promise(r => {
+        const i = new Image();
+        i.src = src;
+        i.onload = r; i.onerror = r;
+    });
+}
+
+/**
+ * Calculates the scale needed to ensure no black edges appear 
+ * during rotation and panning.
+ */
+function getRequiredScale(angleDeg) {
+    const rad = Math.abs(angleDeg * Math.PI / 180);
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    
+    // Geometric scale to cover rotation
+    const scaleForRotation = Math.abs(Math.cos(rad)) + (h / w) * Math.abs(Math.sin(rad));
+    // Add a buffer for panning (0.1) and user zoom preference
+    return Math.max(scaleForRotation + 0.1, CONFIG.maxZoom * 0.8);
+}
+
+/* ===========================
+   CORE LOGIC
+=========================== */
+let allImages = [];
+let queue = [];
+
+function getNextImageUrl() {
+    if (queue.length === 0) {
+        queue = [...allImages].sort(() => Math.random() - 0.5);
+    }
+    return queue.pop();
+}
+
+function createSlide(src) {
+    const stage = document.createElement("div");
+    stage.className = "slide-stage";
+    
+    const img = document.createElement("img");
+    img.src = src;
+    
+    stage.appendChild(img);
+    container.appendChild(stage);
+    return { stage, img };
+}
+
+function applyKenBurns(img, duration) {
+    if (!CONFIG.enableMotion) return;
+
+    const rot = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
+    const endRot = CONFIG.enableRotate ? rand(-CONFIG.maxRotation, CONFIG.maxRotation) : 0;
+    
+    // Calculate safe scale based on rotation
+    const startScale = getRequiredScale(rot);
+    const endScale = startScale * rand(1.05, 1.15); // Slight zoom growth
+
+    // Max pan distance based on scale
+    const panRange = (startScale - 1) * 20; 
+    const moveX = CONFIG.enablePan ? rand(-panRange, panRange) : 0;
+    const moveY = CONFIG.enablePan ? rand(-panRange, panRange) : 0;
+
+    // Set Initial State
+    img.style.transition = 'none';
+    img.style.transform = `scale(${startScale}) rotate(${rot}deg) translate(0, 0)`;
+
+    // Trigger Animation
+    requestAnimationFrame(() => {
+        img.style.transition = `transform ${duration}ms linear`;
+        img.style.transform = `scale(${endScale}) rotate(${endRot}deg) translate(${moveX}px, ${moveY}px)`;
+    });
+}
+
+async function start() {
+    allImages = await loadImages();
+    if (!allImages.length) return;
+
+    let current = null;
+
+    while (true) {
+        const nextSrc = getNextImageUrl();
+        await preload(nextSrc);
+
+        const next = createSlide(nextSrc);
+        const transTime = CONFIG.mode === "fade" ? CONFIG.fadeDuration : CONFIG.transitionTime;
+        const totalVisibleTime = CONFIG.displayTime + transTime;
+
+        // Start motion immediately on creation
+        applyKenBurns(next.img, totalVisibleTime + 1000);
+
+        if (!current) {
+            // First run
+            next.stage.style.opacity = "1";
+            current = next;
+        } else {
+            // Setup transition
+            next.stage.style.zIndex = 2;
+            next.stage.style.transition = `all ${transTime}ms ease-in-out`;
+            current.stage.style.transition = `all ${transTime}ms ease-in-out`;
+
+            if (CONFIG.mode === "fade") {
+                next.stage.style.opacity = "0";
+                next.stage.getBoundingClientRect(); // Force reflow
+                next.stage.style.opacity = "1";
+            } else {
+                // Directional Slide
+                const directions = {
+                    left: "translateX(100%)",
+                    right: "translateX(-100%)",
+                    top: "translateY(100%)",
+                    bottom: "translateY(-100%)"
+                };
+                const exitDirections = {
+                    left: "translateX(-100%)",
+                    right: "translateX(100%)",
+                    top: "translateY(-100%)",
+                    bottom: "translateY(100%)"
+                };
+
+                next.stage.style.transform = directions[CONFIG.mode];
+                next.stage.getBoundingClientRect();
+                next.stage.style.transform = "translateX(0) translateY(0)";
+                
+                if (CONFIG.slideStyle === "push") {
+                    current.stage.style.transform = exitDirections[CONFIG.mode];
+                }
+            }
+
+            // Wait for transition to finish
+            await sleep(transTime);
+            
+            // Cleanup old slide
+            if (current.stage.parentNode) {
+                container.removeChild(current.stage);
+            }
+            current = next;
+        }
+
+        // Wait for display time before next loop
+        await sleep(CONFIG.displayTime);
+    }
+}
+
+document.addEventListener("DOMContentLoaded", start);
 </script>
 </body>
 </html>

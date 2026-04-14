@@ -1,43 +1,18 @@
-// ===========================
-// SLIDESHOW CONFIG
-// ===========================
-
 const CONFIG = {
+    title: "DBuild Splash Screen",
+    mode: "fade", // "left", "right", "top", "bottom", "fade"
+    slideStyle: "overlay", // "overlay", "push"
+    displayTime: 5000,
+    transitionTime: 1000,
+    fadeDuration: 3000,
+    startRandom: true,
 
-	// Page title (browser tab)
-	title: "DBuild Splash Screen",
-
-	// Transition direction
-	// Options: "left", "right", "top", "bottom", "fade"
-	mode: "fade",
-
-	// Slide behavior:
-	// "overlay" = new image slides on top
-	// "push"= old image slides out with new one
-	slideStyle: "overlay",
-
-	// Time each image stays visible (ms)
-	displayTime: 5000,
-
-	// Slide animation duration (ms)
-	transitionTime: 1000,
-
-	// Fade duration (only used in "fade" mode)
-	fadeDuration: 5000,
-
-	// Start from a random image
-	startRandom: true,
-
-	// ===========================
-	// MOTION SETTINGS
-	// ===========================
-
-	enableMotion: true,
-	minZoom: 1.15, // slightly higher = safer edges
-	maxZoom: 1.3,
-	maxRotation: 3,
-
-	enablePan: true,
-	enableZoom: true,
-	enableRotate: true
+    // MOTION SETTINGS
+    enableMotion: true,
+    maxZoom: 1.4,
+    maxRotation: 5, // Degrees
+    
+    enablePan: true,
+    enableZoom: true,
+    enableRotate: true
 };
