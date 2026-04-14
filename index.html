@@ -5,31 +5,38 @@
 <title>Loading...</title>
 
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    background: black;
-  }
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: black;
+}
 
-  #slideshow {
-    position: relative;
-    width: 100vw;
-    height: 100vh;
-  }
+#slideshow {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+}
 
-  img {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0;
-  }
+/* OUTER container (handles slide/fade) */
+.slide {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  opacity: 0;
+}
 
-  .transition {
-    transition-property: transform, opacity;
-    transition-timing-function: ease;
-  }
+/* INNER image (handles Ken Burns) */
+.slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.transition {
+  transition: transform 1s ease, opacity 1s ease;
+}
 </style>
 </head>
 <body>
@@ -103,58 +110,65 @@ function getNextImage() {
 }
 
 /* ===========================
-   KEN BURNS
+   CREATE SLIDE (FIXED)
+=========================== */
+function createSlide(src, z = 1) {
+  const slide = document.createElement("div");
+  slide.className = "slide transition";
+  slide.style.zIndex = z;
+
+  const img = document.createElement("img");
+  img.src = src;
+
+  slide.appendChild(img);
+  container.appendChild(slide);
+
+  applyKenBurns(img);
+
+  return slide;
+}
+
+/* ===========================
+   KEN BURNS (FIXED)
 =========================== */
 function applyKenBurns(img) {
   if (!CONFIG.kenBurns?.enabled) return;
 
-  const maxZoom = CONFIG.kenBurns.maxZoom || 1.2;
-  const maxPan = CONFIG.kenBurns.maxPan || 0.1;
+  const maxZoom = CONFIG.kenBurns.maxZoom;
+  const maxPan = CONFIG.kenBurns.maxPan;
 
-  // Random zoom direction
   const zoomIn = Math.random() > 0.5;
 
   const startScale = zoomIn ? 1 : maxZoom;
   const endScale = zoomIn ? maxZoom : 1;
 
-  // Safe pan range (based on zoom)
-  const maxOffset = (endScale - 1) / 2;
+  const maxOffset = (Math.max(startScale, endScale) - 1) / 2;
 
-  const panX1 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
-  const panY1 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+  const pan1x = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+  const pan1y = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
 
-  const panX2 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
-  const panY2 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+  const pan2x = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+  const pan2y = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
 
-  // Apply transition duration = display time
-  img.style.transition = `transform ${CONFIG.displayTime}ms linear`;
+  // IMPORTANT: run longer than displayTime to avoid stopping early
+  const duration = CONFIG.displayTime + CONFIG.transitionTime;
 
-  // Start state
-  img.style.transform = `scale(${startScale}) translate(${panX1 * 100}%, ${panY1 * 100}%)`;
+  img.style.transition = `transform ${duration}ms linear`;
+
+  img.style.transform =
+    `scale(${startScale}) translate(${pan1x * 100}%, ${pan1y * 100}%)`;
 
   forceReflow(img);
 
-  // Animate
   requestAnimationFrame(() => {
-    img.style.transform = `scale(${endScale}) translate(${panX2 * 100}%, ${panY2 * 100}%)`;
+    img.style.transform =
+      `scale(${endScale}) translate(${pan2x * 100}%, ${pan2y * 100}%)`;
   });
 }
 
 /* ===========================
-   HELPERS
+   TRANSFORMS
 =========================== */
-function createImage(src, z = 1) {
-  const img = document.createElement("img");
-  img.src = src;
-  img.style.zIndex = z;
-  img.classList.add("transition");
-  container.appendChild(img);
-
-  applyKenBurns(img);
-
-  return img;
-}
-
 function getTransforms(mode) {
   switch(mode) {
     case "left": return ["translateX(-100%)", "translateX(100%)"];
@@ -169,26 +183,20 @@ function getTransforms(mode) {
    MAIN LOOP
 =========================== */
 async function start() {
-  document.title = CONFIG.title || "Slideshow";
+  document.title = CONFIG.title;
 
   images = await loadImages();
   if (!images.length) return;
 
   buildSequence();
 
-  let currentSrc = CONFIG.startRandom ? getNextImage() : images[0];
-  await preload(currentSrc);
-
-  let current = createImage(currentSrc, 1);
+  let current = createSlide(getNextImage(), 1);
   current.style.opacity = "1";
 
   while (true) {
     await sleep(CONFIG.displayTime);
 
-    let nextSrc = getNextImage();
-    await preload(nextSrc);
-
-    let next = createImage(nextSrc, 2);
+    let next = createSlide(getNextImage(), 2);
 
     const [startPos, exitPos] = getTransforms(CONFIG.mode);
 
@@ -197,8 +205,6 @@ async function start() {
 
     if (CONFIG.mode === "fade") {
       next.style.opacity = "0";
-      next.style.transitionDuration = CONFIG.fadeDuration + "ms";
-      current.style.transitionDuration = CONFIG.fadeDuration + "ms";
 
       forceReflow(next);
 
@@ -208,23 +214,23 @@ async function start() {
       await sleep(CONFIG.fadeDuration);
 
     } else if (CONFIG.slideStyle === "overlay") {
-      next.style.transform += " " + startPos;
+      next.style.transform = startPos;
       next.style.opacity = "1";
 
       forceReflow(next);
 
-      next.style.transform = next.style.transform.replace(startPos, "translate(0,0)");
+      next.style.transform = "translate(0,0)";
 
       await sleep(CONFIG.transitionTime);
 
-    } else if (CONFIG.slideStyle === "push") {
-      next.style.transform += " " + startPos;
+    } else {
+      next.style.transform = startPos;
       next.style.opacity = "1";
 
       forceReflow(next);
 
-      next.style.transform = next.style.transform.replace(startPos, "translate(0,0)");
-      current.style.transform += " " + exitPos;
+      next.style.transform = "translate(0,0)";
+      current.style.transform = exitPos;
 
       await sleep(CONFIG.transitionTime);
     }
