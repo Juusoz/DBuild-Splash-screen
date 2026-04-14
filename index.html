@@ -24,7 +24,6 @@
     height: 100%;
     object-fit: cover;
     opacity: 0;
-    transform: scale(1);
   }
 
   .transition {
@@ -40,17 +39,11 @@
 <script src="config.js"></script>
 
 <script>
-/* ===========================
-   LOAD IMAGES
-=========================== */
 async function loadImages() {
   const res = await fetch("images.json");
   return await res.json();
 }
 
-/* ===========================
-   UTILITIES
-=========================== */
 function shuffle(array) {
   for (let i = array.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -76,10 +69,6 @@ function forceReflow(el) {
   el.getBoundingClientRect();
 }
 
-function rand(min, max) {
-  return Math.random() * (max - min) + min;
-}
-
 /* ===========================
    STATE
 =========================== */
@@ -90,7 +79,7 @@ let lastImage = null;
 let container = document.getElementById("slideshow");
 
 /* ===========================
-   HELPERS
+   SEQUENCE
 =========================== */
 function buildSequence() {
   sequence = shuffle([...images]);
@@ -104,18 +93,65 @@ function buildSequence() {
 }
 
 function getNextImage() {
-  if (index >= sequence.length) buildSequence();
+  if (index >= sequence.length) {
+    buildSequence();
+  }
+
   const next = sequence[index++];
   lastImage = next;
   return next;
 }
 
+/* ===========================
+   KEN BURNS
+=========================== */
+function applyKenBurns(img) {
+  if (!CONFIG.kenBurns?.enabled) return;
+
+  const maxZoom = CONFIG.kenBurns.maxZoom || 1.2;
+  const maxPan = CONFIG.kenBurns.maxPan || 0.1;
+
+  // Random zoom direction
+  const zoomIn = Math.random() > 0.5;
+
+  const startScale = zoomIn ? 1 : maxZoom;
+  const endScale = zoomIn ? maxZoom : 1;
+
+  // Safe pan range (based on zoom)
+  const maxOffset = (endScale - 1) / 2;
+
+  const panX1 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+  const panY1 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+
+  const panX2 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+  const panY2 = (Math.random() * 2 - 1) * Math.min(maxPan, maxOffset);
+
+  // Apply transition duration = display time
+  img.style.transition = `transform ${CONFIG.displayTime}ms linear`;
+
+  // Start state
+  img.style.transform = `scale(${startScale}) translate(${panX1 * 100}%, ${panY1 * 100}%)`;
+
+  forceReflow(img);
+
+  // Animate
+  requestAnimationFrame(() => {
+    img.style.transform = `scale(${endScale}) translate(${panX2 * 100}%, ${panY2 * 100}%)`;
+  });
+}
+
+/* ===========================
+   HELPERS
+=========================== */
 function createImage(src, z = 1) {
   const img = document.createElement("img");
   img.src = src;
   img.style.zIndex = z;
   img.classList.add("transition");
   container.appendChild(img);
+
+  applyKenBurns(img);
+
   return img;
 }
 
@@ -127,29 +163,6 @@ function getTransforms(mode) {
     case "bottom": return ["translateY(100%)", "translateY(-100%)"];
     default: return ["", ""];
   }
-}
-
-/* ===========================
-   MOTION EFFECT
-=========================== */
-function applyMotion(img) {
-  if (!CONFIG.motion || !CONFIG.motion.enabled) return;
-
-  const zoomStart = rand(CONFIG.motion.zoomMin, CONFIG.motion.zoomMax);
-  const zoomEnd   = rand(CONFIG.motion.zoomMin, CONFIG.motion.zoomMax);
-
-  const panX = rand(-CONFIG.motion.panMax, CONFIG.motion.panMax);
-  const panY = rand(-CONFIG.motion.panMax, CONFIG.motion.panMax);
-
-  // Initial state
-  img.style.transform = `scale(${zoomStart}) translate(0%, 0%)`;
-
-  // Force apply
-  forceReflow(img);
-
-  // Animate slowly
-  img.style.transitionDuration = CONFIG.motion.duration + "ms";
-  img.style.transform = `scale(${zoomEnd}) translate(${panX}%, ${panY}%)`;
 }
 
 /* ===========================
@@ -169,8 +182,6 @@ async function start() {
   let current = createImage(currentSrc, 1);
   current.style.opacity = "1";
 
-  applyMotion(current);
-
   while (true) {
     await sleep(CONFIG.displayTime);
 
@@ -186,43 +197,42 @@ async function start() {
 
     if (CONFIG.mode === "fade") {
       next.style.opacity = "0";
+      next.style.transitionDuration = CONFIG.fadeDuration + "ms";
+      current.style.transitionDuration = CONFIG.fadeDuration + "ms";
 
       forceReflow(next);
 
       next.style.opacity = "1";
       current.style.opacity = "0";
 
-      applyMotion(next);
-
       await sleep(CONFIG.fadeDuration);
 
     } else if (CONFIG.slideStyle === "overlay") {
-      next.style.transform = startPos;
+      next.style.transform += " " + startPos;
       next.style.opacity = "1";
 
       forceReflow(next);
 
-      next.style.transform = "translate(0,0)";
-
-      applyMotion(next);
+      next.style.transform = next.style.transform.replace(startPos, "translate(0,0)");
 
       await sleep(CONFIG.transitionTime);
 
     } else if (CONFIG.slideStyle === "push") {
-      next.style.transform = startPos;
+      next.style.transform += " " + startPos;
       next.style.opacity = "1";
 
       forceReflow(next);
 
-      next.style.transform = "translate(0,0)";
-      current.style.transform = exitPos;
-
-      applyMotion(next);
+      next.style.transform = next.style.transform.replace(startPos, "translate(0,0)");
+      current.style.transform += " " + exitPos;
 
       await sleep(CONFIG.transitionTime);
     }
 
-    if (current.parentNode) container.removeChild(current);
+    if (current.parentNode) {
+      container.removeChild(current);
+    }
+
     current = next;
   }
 }
