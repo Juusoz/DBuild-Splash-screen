@@ -26,13 +26,21 @@ const CONFIG = {
   fadeDuration: 5000,
 
   // Start from a random image
-  startRandom: true
+  startRandom: true,
   
-  // Enable subtle motion effect
-	kenBurns: true,
+	// Motion effect (Ken Burns style)
+	motion: {
+	  enabled: true,
 
-	// How strong the zoom is (1 = no zoom)
-	kenBurnsScaleMin: 1.05,
-	kenBurnsScaleMax: 1.15,
+	  // Zoom range (1 = no zoom)
+	  zoomMin: 1.05,
+	  zoomMax: 1.15,
+
+	  // Max pan offset (% of image size)
+	  panMax: 10,
+
+	  // Duration should match or exceed displayTime
+	  duration: 6000
+	}
 
 };
